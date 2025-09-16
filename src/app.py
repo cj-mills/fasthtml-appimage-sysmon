@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Minimal FastHTML application demonstrating AppImage packaging with DaisyUI and Tailwind CSS.
+System Information and Resource Monitoring Dashboard with real-time updates via SSE.
 """
 
 from fasthtml.common import *
-from fasthtml.common import Code
+from fasthtml.common import sse_message
 import os
 import sys
 import subprocess
@@ -15,14 +15,30 @@ from contextlib import closing
 from datetime import datetime
 import tempfile
 from pathlib import Path
+import asyncio
+import json
+import threading
+import time
+import psutil
+
+# SSE imports
+from cjm_fasthtml_sse.core import SSEBroadcastManager
+from cjm_fasthtml_sse.helpers import (
+    oob_swap,
+    oob_element,
+    oob_update,
+    insert_htmx_sse_ext
+)
+from cjm_fasthtml_sse.htmx import HTMXSSEConnector
 
 # DaisyUI imports
 from cjm_fasthtml_daisyui.components.actions.button import btn, btn_colors, btn_sizes, btn_styles
 from cjm_fasthtml_daisyui.components.data_display.card import card, card_body, card_title, card_actions
 from cjm_fasthtml_daisyui.components.data_display.badge import badge, badge_colors, badge_sizes
-from cjm_fasthtml_daisyui.components.data_display.stat import stat, stat_title, stat_value, stat_desc, stats
-from cjm_fasthtml_daisyui.components.data_display.list import list_ui, list_row
-from cjm_fasthtml_daisyui.components.data_input.text_input import text_input, text_input_colors, text_input_sizes
+from cjm_fasthtml_daisyui.components.data_display.stat import stat, stat_title, stat_value, stat_desc, stats, stats_direction
+from cjm_fasthtml_daisyui.components.data_display.status import status, status_colors, status_sizes
+from cjm_fasthtml_daisyui.components.feedback.progress import progress, progress_colors
+from cjm_fasthtml_daisyui.components.feedback.alert import alert, alert_colors
 from cjm_fasthtml_daisyui.components.navigation.navbar import navbar, navbar_start, navbar_center, navbar_end
 from cjm_fasthtml_daisyui.components.layout.divider import divider
 from cjm_fasthtml_daisyui.utilities.semantic_colors import bg_dui, text_dui, border_dui
@@ -32,11 +48,10 @@ from cjm_fasthtml_daisyui.core.testing import create_theme_selector
 # Tailwind imports
 from cjm_fasthtml_tailwind.utilities.spacing import p, m, space
 from cjm_fasthtml_tailwind.utilities.flexbox_and_grid import flex_display, gap, grid_cols, items, justify, grid_display, flex
-from cjm_fasthtml_tailwind.utilities.sizing import w, h, max_w, min_h
-from cjm_fasthtml_tailwind.utilities.typography import font_size, font_weight, text_align, font_family, break_all
-from cjm_fasthtml_tailwind.utilities.borders import rounded
+from cjm_fasthtml_tailwind.utilities.sizing import w, h, max_w, min_h, min_w
+from cjm_fasthtml_tailwind.utilities.typography import font_size, font_weight, text_align, font_family, break_all, leading
+from cjm_fasthtml_tailwind.utilities.borders import rounded, border, border_color
 from cjm_fasthtml_tailwind.utilities.effects import shadow
-from cjm_fasthtml_tailwind.utilities.flexbox_and_grid import flex
 from cjm_fasthtml_tailwind.core.base import combine_classes
 
 # Find an available port
@@ -52,325 +67,562 @@ PORT = int(PORT_ENV) if PORT_ENV != '0' else find_free_port()
 HOST = os.environ.get('FASTHTML_HOST', '127.0.0.1')
 
 # Setup writable directory for session keys and other files
-# Use temp directory when running from AppImage
 if os.environ.get('APPIMAGE'):
-    # Running from AppImage - use temp directory
     WORK_DIR = Path(tempfile.mkdtemp(prefix='fasthtml-app-'))
     os.chdir(WORK_DIR)
 else:
-    # Running normally - use current directory
     WORK_DIR = Path.cwd()
+
+# Initialize SSE Broadcast Manager
+sse_manager = SSEBroadcastManager(
+    max_queue_size=100,
+    history_size=50,
+    default_timeout=0.1
+)
+
+# Initialize HTMX SSE Connector
+htmx_sse_connector = HTMXSSEConnector()
 
 # Create the FastHTML app with DaisyUI headers
 app, rt = fast_app(
     pico=False,
-    hdrs=get_daisyui_headers() + [
-        Script(src='https://unpkg.com/htmx.org@2.0.7'),
-    ],
-    title="FastHTML AppImage Demo"
+    hdrs=[*get_daisyui_headers()],
+    title="System Monitor Dashboard"
 )
 
-# State for demo
-todos = []
-counter = 0
+# Insert HTMX SSE extension
+insert_htmx_sse_ext(app.hdrs)
+
+MAX_CPU_CORES = 32
+
+# Cache for system info that doesn't change
+STATIC_SYSTEM_INFO = {}
+
+def get_static_system_info():
+    """Get system information that doesn't change during runtime."""
+    global STATIC_SYSTEM_INFO
+    if not STATIC_SYSTEM_INFO:
+        try:
+            import socket
+            hostname = socket.gethostname()
+        except:
+            hostname = "Unknown"
+
+        STATIC_SYSTEM_INFO = {
+            'os': platform.system(),
+            'os_version': platform.version(),
+            'os_release': platform.release(),
+            'architecture': platform.machine(),
+            'processor': platform.processor() or "Unknown",
+            'hostname': hostname,
+            'python_version': sys.version.split()[0],
+            'cpu_count': psutil.cpu_count(logical=False),
+            'cpu_count_logical': psutil.cpu_count(logical=True),
+            'boot_time': datetime.fromtimestamp(psutil.boot_time()).strftime('%Y-%m-%d %H:%M:%S')
+        }
+    return STATIC_SYSTEM_INFO
+
+def get_cpu_info():
+    """Get current CPU usage information."""
+    cpu_percent = psutil.cpu_percent(interval=0.1, percpu=False)
+    cpu_percent_per_core = psutil.cpu_percent(interval=0.1, percpu=True)
+    cpu_freq = psutil.cpu_freq()
+
+    return {
+        'percent': cpu_percent,
+        'percent_per_core': cpu_percent_per_core,
+        'frequency_current': cpu_freq.current if cpu_freq else 0,
+        'frequency_min': cpu_freq.min if cpu_freq else 0,
+        'frequency_max': cpu_freq.max if cpu_freq else 0,
+    }
+
+def get_memory_info():
+    """Get current memory usage information."""
+    mem = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+
+    return {
+        'total': mem.total,
+        'available': mem.available,
+        'used': mem.used,
+        'percent': mem.percent,
+        'swap_total': swap.total,
+        'swap_used': swap.used,
+        'swap_percent': swap.percent
+    }
+
+def get_disk_info():
+    """Get disk usage information."""
+    partitions = psutil.disk_partitions()
+    disk_info = []
+
+    for partition in partitions:
+        try:
+            usage = psutil.disk_usage(partition.mountpoint)
+            disk_info.append({
+                'device': partition.device,
+                'mountpoint': partition.mountpoint,
+                'fstype': partition.fstype,
+                'total': usage.total,
+                'used': usage.used,
+                'free': usage.free,
+                'percent': usage.percent
+            })
+        except PermissionError:
+            continue
+
+    return disk_info
+
+def check_gpu():
+    """Check for GPU availability and get info."""
+    gpu_info = {'available': False, 'type': 'None', 'details': {}}
+
+    # Check for NVIDIA GPU
+    try:
+        result = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu',
+                               '--format=csv,noheader,nounits'],
+                              capture_output=True, text=True, timeout=2)
+        if result.returncode == 0:
+            lines = result.stdout.strip().split('\n')
+            for i, line in enumerate(lines):
+                parts = [p.strip() for p in line.split(',')]
+                if len(parts) >= 5:
+                    gpu_info['available'] = True
+                    gpu_info['type'] = 'NVIDIA'
+                    gpu_info['details'][f'gpu_{i}'] = {
+                        'name': parts[0],
+                        'memory_total': int(parts[1]),
+                        'memory_used': int(parts[2]),
+                        'memory_free': int(parts[3]),
+                        'utilization': int(parts[4])
+                    }
+    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+        pass
+
+    return gpu_info
+
+def format_bytes(bytes_value):
+    """Format bytes to human readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_value < 1024.0:
+            return f"{bytes_value:.1f} {unit}"
+        bytes_value /= 1024.0
+    return f"{bytes_value:.1f} PB"
+
+def format_uptime(boot_time_str):
+    """Format uptime from boot time string."""
+    boot_time = datetime.strptime(boot_time_str, '%Y-%m-%d %H:%M:%S')
+    uptime = datetime.now() - boot_time
+    days = uptime.days
+    hours = uptime.seconds // 3600
+    minutes = (uptime.seconds % 3600) // 60
+
+    if days > 0:
+        return f"{days}d {hours}h {minutes}m"
+    elif hours > 0:
+        return f"{hours}h {minutes}m"
+    else:
+        return f"{minutes}m"
+
+def get_progress_color(percent):
+    """Get progress bar color based on percentage."""
+    if percent < 50:
+        return progress_colors.success
+    elif percent < 80:
+        return progress_colors.warning
+    else:
+        return progress_colors.error
+
+def render_stat_card(title_text, value_text, desc_text=None, value_color=None):
+    """Render a stat card with consistent styling."""
+    value_classes = [stat_value]
+    if value_color:
+        value_classes.append(value_color)
+
+    return Div(
+        Div(title_text, cls=combine_classes(stat_title, text_dui.base_content.opacity(70))),
+        Div(value_text, cls=combine_classes(*value_classes)),
+        Div(desc_text, cls=str(stat_desc)) if desc_text else None,
+        cls=str(stat)
+    )
+
+def render_progress_bar(value, max_value=100, label=None):
+    """Render a progress bar with label."""
+    color = get_progress_color(value)
+
+    return Div(
+        Div(
+            Span(label or f"{value:.1f}%", cls=combine_classes(font_size.xs, text_dui.base_content)),
+            Span(f"{value:.1f}%", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))),
+            cls=combine_classes(flex_display, justify.between, m.b(1))
+        ) if label else None,
+        Progress(
+            value=str(value),
+            max=str(max_value),
+            cls=combine_classes(progress, color, w.full)
+        )
+    )
+
+def render_os_info_card():
+    """Render the OS information card."""
+    info = get_static_system_info()
+
+    return Div(
+        Div(
+            H3("Operating System", cls=combine_classes(card_title, text_dui.base_content)),
+            cls=str(m.b(4))
+        ),
+        Div(
+            render_stat_card("System", f"{info['os']} {info['os_release']}", info['architecture']),
+            render_stat_card("Hostname", info['hostname'], f"Python {info['python_version']}"),
+            render_stat_card("Boot Time", info['boot_time'], f"Uptime: {format_uptime(info['boot_time'])}"),
+            render_stat_card("CPU Cores", f"{info['cpu_count']} Physical", f"{info['cpu_count_logical']} Logical"),
+            cls=combine_classes(stats, stats_direction.vertical.lg, bg_dui.base_200, rounded.lg, p(4))
+        ),
+        cls=str(card_body)
+    )
+
+def render_cpu_card(cpu_info):
+    """Render the CPU usage card."""
+    return Div(
+        Div(
+            H3("CPU Usage", cls=combine_classes(card_title, text_dui.base_content)),
+            Span(
+                f"{cpu_info['percent']:.1f}%",
+                cls=combine_classes(
+                    badge,
+                    badge_colors.primary if cpu_info['percent'] < 80 else badge_colors.error,
+                    badge_sizes.lg
+                )
+            ),
+            cls=combine_classes(flex_display, justify.between, items.center, m.b(4))
+        ),
+
+        # Overall CPU usage
+        Div(
+            render_progress_bar(cpu_info['percent'], label="Overall Usage"),
+            cls=str(m.b(4))
+        ),
+
+        # CPU Frequency
+        Div(
+            P("CPU Frequency", cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
+            Div(
+                Span(f"Current: {cpu_info['frequency_current']:.0f} MHz",
+                     cls=combine_classes(text_dui.primary, font_size.sm)),
+                Span(f"Min: {cpu_info['frequency_min']:.0f} MHz",
+                     cls=combine_classes(text_dui.base_content.opacity(60), font_size.xs)),
+                Span(f"Max: {cpu_info['frequency_max']:.0f} MHz",
+                     cls=combine_classes(text_dui.base_content.opacity(60), font_size.xs)),
+                cls=combine_classes(flex_display, justify.between, gap(2))
+            ),
+            cls=str(m.b(4))
+        ),
+
+        # Per-core usage (if not too many cores)
+        Div(
+            P("Per Core Usage", cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
+            Div(
+                *[render_progress_bar(percent, label=f"Core {i}")
+                  for i, percent in enumerate(cpu_info['percent_per_core'][:MAX_CPU_CORES])],
+                cls=str(space.y(2))
+            ),
+            cls=str(m.t(2))
+        ) if len(cpu_info['percent_per_core']) <= MAX_CPU_CORES else None,
+
+        cls=str(card_body),
+        id="cpu-card-body"
+    )
+
+def render_memory_card(mem_info):
+    """Render the memory usage card."""
+    return Div(
+        Div(
+            H3("Memory Usage", cls=combine_classes(card_title, text_dui.base_content)),
+            Span(
+                f"{mem_info['percent']:.1f}%",
+                cls=combine_classes(
+                    badge,
+                    badge_colors.primary if mem_info['percent'] < 80 else badge_colors.error,
+                    badge_sizes.lg
+                )
+            ),
+            cls=combine_classes(flex_display, justify.between, items.center, m.b(4))
+        ),
+
+        # RAM Usage
+        Div(
+            P("RAM", cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
+            render_progress_bar(mem_info['percent'],
+                              label=f"{format_bytes(mem_info['used'])} / {format_bytes(mem_info['total'])}"),
+            P(f"Available: {format_bytes(mem_info['available'])}",
+              cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.t(1))),
+            cls=str(m.b(4))
+        ),
+
+        # Swap Usage
+        Div(
+            P("Swap", cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
+            render_progress_bar(mem_info['swap_percent'],
+                              label=f"{format_bytes(mem_info['swap_used'])} / {format_bytes(mem_info['swap_total'])}"),
+            cls=str(m.t(4))
+        ) if mem_info['swap_total'] > 0 else None,
+
+        cls=str(card_body),
+        id="memory-card-body"
+    )
+
+def render_disk_card(disk_info):
+    """Render the disk usage card."""
+    return Div(
+        Div(
+            H3("Disk Usage", cls=combine_classes(card_title, text_dui.base_content)),
+            cls=str(m.b(4))
+        ),
+
+        Div(
+            *[Div(
+                Div(
+                    P(disk['device'], cls=combine_classes(font_size.sm, font_weight.medium)),
+                    P(f"{disk['mountpoint']} ({disk['fstype']})",
+                      cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))),
+                    cls=str(m.b(2))
+                ),
+                render_progress_bar(disk['percent'],
+                                  label=f"{format_bytes(disk['used'])} / {format_bytes(disk['total'])}"),
+                P(f"Free: {format_bytes(disk['free'])}",
+                  cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.t(1))),
+                cls=combine_classes(p(3), bg_dui.base_200, rounded.lg, m.b(3))
+            ) for disk in disk_info[:5]],  # Limit to 5 disks for UI clarity
+            cls=""
+        ),
+
+        cls=str(card_body),
+        id="disk-card-body"
+    )
+
+def render_gpu_card(gpu_info):
+    """Render the GPU information card."""
+    if not gpu_info['available']:
+        return Div(
+            Div(
+                H3("GPU Information", cls=combine_classes(card_title, text_dui.base_content)),
+                cls=str(m.b(4))
+            ),
+            Div(
+                "No GPU detected or GPU monitoring not available",
+                cls=combine_classes(alert, alert_colors.info)
+            ),
+            cls=str(card_body)
+        )
+
+    return Div(
+        Div(
+            H3("GPU Information", cls=combine_classes(card_title, text_dui.base_content)),
+            Span(
+                gpu_info['type'],
+                cls=combine_classes(badge, badge_colors.success, badge_sizes.lg)
+            ),
+            cls=combine_classes(flex_display, justify.between, items.center, m.b(4))
+        ),
+
+        Div(
+            *[Div(
+                P(details['name'], cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
+
+                # GPU Utilization
+                Div(
+                    P("Utilization", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                    render_progress_bar(details['utilization']),
+                    cls=str(m.b(3))
+                ),
+
+                # GPU Memory
+                Div(
+                    P("Memory", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                    render_progress_bar(
+                        (details['memory_used'] / details['memory_total']) * 100,
+                        label=f"{details['memory_used']} MB / {details['memory_total']} MB"
+                    ),
+                    cls=""
+                ),
+
+                cls=combine_classes(p(3), bg_dui.base_200, rounded.lg, m.b(3))
+            ) for gpu_id, details in gpu_info['details'].items()],
+            cls=""
+        ),
+
+        cls=str(card_body),
+        id="gpu-card-body"
+    )
 
 @rt('/')
 def get():
+    # Get initial system information
+    static_info = get_static_system_info()
+    cpu_info = get_cpu_info()
+    mem_info = get_memory_info()
+    disk_info = get_disk_info()
+    gpu_info = check_gpu()
+
     return Div(
-        # Navbar - improved with neutral colors and subtle shadow
+        # Navbar with improved styling
         Div(
             Div(
                 Div(
-                    H1("FastHTML AppImage Demo",
+                    H1("System Monitor Dashboard",
                        cls=combine_classes(font_size._2xl, font_weight.bold, text_dui.base_content)),
                     cls=str(navbar_start)
                 ),
                 Div(
-                    Span(f"Running on {platform.system()} {platform.release()}",
-                         cls=combine_classes(badge, badge_colors.neutral, badge_sizes.md)),
+                    # Connection status indicator
+                    Div(
+                        Span(cls=combine_classes(status, status_colors.success, status_sizes.sm, m.r(2))),
+                        Span("Live", cls=combine_classes(text_dui.success, font_size.sm)),
+                        id="connection-status",
+                        cls=combine_classes(flex_display, items.center)
+                    ),
                     create_theme_selector(),
-                    cls=combine_classes(flex_display, justify.end, items.center, gap(3), navbar_end)
+                    cls=combine_classes(flex_display, justify.end, items.center, gap(4), navbar_end)
                 ),
                 cls=combine_classes(navbar, bg_dui.base_100, shadow.sm, p(4))
             )
         ),
 
+        # SSE connection for real-time updates
+        Div(
+            id="sse-connection",
+            hx_ext="sse",
+            sse_connect="/stream_updates",
+            sse_swap="message",
+            style="display: none;"
+        ),
+
         # Main content container
         Div(
-            # Simplified hero - system info badge strip
+            # System Overview Header
             Div(
-                Div(
-                    Span(f"Python {sys.version.split()[0]}",
-                         cls=combine_classes(badge, badge_colors.neutral, badge_sizes.lg)),
-                    Span(f"Server: {HOST}:{PORT}",
-                         cls=combine_classes(badge, badge_colors.neutral, badge_sizes.lg)),
-                    Span(f"PID: {os.getpid()}",
-                         cls=combine_classes(badge, badge_colors.neutral, badge_sizes.lg)),
-                    cls=combine_classes(flex_display, justify.center, gap(2), flex.wrap)
-                ),
-                cls=combine_classes(p.y(4), m.b(2))
+                H2("System Overview", cls=combine_classes(font_size.xl, font_weight.semibold, text_dui.base_content, m.b(6))),
+                P(f"Monitoring {static_info['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                  cls=combine_classes(text_dui.base_content.opacity(60), font_size.sm)),
+                id="timestamp",
+                cls=str(m.b(6))
             ),
 
-            # Grid layout for main sections
+            # Grid layout for cards
             Div(
-                # Counter demo card - simplified and enhanced
-                Card(
-                    Div(
-                        H2("Counter", cls=combine_classes(card_title, text_dui.base_content)),
-                        P("Click to increment the counter", cls=combine_classes(
-                            font_size.sm,
-                            text_dui.base_content.opacity(70),
-                            m.b(6)
-                        )),
-                        Div(
-                            Span(counter, id="counter",
-                                 cls=combine_classes(
-                                     font_size._5xl,
-                                     font_weight.bold,
-                                     text_dui.primary
-                                 )),
-                            cls=combine_classes(text_align.center, m.y(8))
-                        ),
-                        Div(
-                            Button("Increment",
-                                   cls=combine_classes(btn, btn_colors.primary, btn_sizes.lg, w.full),
-                                   hx_post="/increment",
-                                   hx_target="#counter",
-                                   hx_swap="innerHTML"),
-                            cls=str(card_actions)
-                        ),
-                        cls=str(card_body)
-                    ),
+                # OS Information Card
+                Div(
+                    render_os_info_card(),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md)
                 ),
 
-                # Todo list card - improved consistency and styling
-                Card(
-                    Div(
-                        H2("Todo List", cls=combine_classes(card_title, text_dui.base_content)),
-                        P("Add and track your tasks", cls=combine_classes(
-                            font_size.sm,
-                            text_dui.base_content.opacity(70),
-                            m.b(4)
-                        )),
-                        Form(
-                            Input(type="text", name="task",
-                                  placeholder="What needs to be done?",
-                                  required=True,
-                                  cls=combine_classes(text_input, text_input_sizes.md, w.full)),
-                            Button("Add Task", type="submit",
-                                   cls=combine_classes(btn, btn_colors.primary, btn_sizes.md, m.t(2), w.full)),
-                            hx_post="/add-todo",
-                            hx_target="#todo-list",
-                            hx_swap="innerHTML",
-                            hx_on="htmx:afterRequest: this.reset()",
-                            cls=str(space.y(2))
-                        ),
-                        Div(
-                            Ul(*[Li(todo, cls=combine_classes(
-                                    p(3),
-                                    bg_dui.base_200,
-                                    rounded.lg,
-                                    text_dui.base_content,
-                                    bg_dui.base_300.hover,
-                                    m.b(2)
-                                ))
-                                for todo in todos],
-                               id="todo-list",
-                               cls=str(space.y(1))),
-                            cls=combine_classes(min_h(32), m.t(4))
-                        ),
-                        cls=str(card_body)
-                    ),
-                    cls=combine_classes(card, bg_dui.base_100, shadow.md)
+                # CPU Usage Card
+                Div(
+                    render_cpu_card(cpu_info),
+                    cls=combine_classes(card, bg_dui.base_100, shadow.md),
+                    id="cpu-card"
                 ),
 
-                cls=combine_classes(grid_display, grid_cols(1).md, grid_cols(2).lg, gap(6))
+                # Memory Usage Card
+                Div(
+                    render_memory_card(mem_info),
+                    cls=combine_classes(card, bg_dui.base_100, shadow.md),
+                    id="memory-card"
+                ),
+
+                # Disk Usage Card
+                Div(
+                    render_disk_card(disk_info),
+                    cls=combine_classes(card, bg_dui.base_100, shadow.md),
+                    id="disk-card"
+                ),
+
+                # GPU Information Card
+                Div(
+                    render_gpu_card(gpu_info),
+                    cls=combine_classes(card, bg_dui.base_100, shadow.md),
+                    id="gpu-card"
+                ),
+
+                cls=combine_classes(grid_display, grid_cols(1).md, grid_cols(2).lg, grid_cols(3).xl, gap(6))
             ),
 
-            # System information section - consistent styling
-            Card(
-                Div(
-                    Div(
-                        H2("System Information", cls=combine_classes(card_title, text_dui.base_content)),
-                        Button("Refresh",
-                               cls=combine_classes(btn, btn_colors.primary, btn_sizes.sm, btn_styles.ghost),
-                               hx_get="/system-info",
-                               hx_target="#system-info",
-                               hx_swap="outerHTML"),
-                        cls=combine_classes(flex_display, justify.between, items.center)
-                    ),
-                    Div(
-                        *system_info_stats(),
-                        cls=combine_classes(stats, bg_dui.base_200, rounded.lg, w.full, m.t(4))
-                    ),
-                    cls=str(card_body),
-                    id="system-info"
-                ),
-                cls=combine_classes(card, bg_dui.base_100, shadow.md, m.t(6))
-            ),
-
-            # Launch options info - improved card design
-            Card(
-                Div(
-                    H3("Launch Options", cls=combine_classes(card_title, text_dui.base_content)),
-                    P("Configure how this application starts", cls=combine_classes(
-                        font_size.sm,
-                        text_dui.base_content.opacity(70),
-                        m.b(4)
-                    )),
-                    Ul(
-                        Li(
-                            Div(
-                                Code("app", cls=combine_classes(
-                                    badge,
-                                    badge_colors.primary,
-                                    badge_sizes.lg,
-                                    font_family.mono
-                                ))
-                            ),
-                            Div(
-                                Div("Standalone Window", cls=combine_classes(
-                                    font_weight.medium,
-                                    text_dui.base_content
-                                )),
-                                Div("FASTHTML_BROWSER=app", cls=combine_classes(
-                                    font_size.sm,
-                                    font_family.mono,
-                                    text_dui.base_content.opacity(60)
-                                ))
-                            ),
-                            cls=str(list_row)
-                        ),
-                        Li(
-                            Div(
-                                Code("none", cls=combine_classes(
-                                    badge,
-                                    badge_colors.warning,
-                                    badge_sizes.lg,
-                                    font_family.mono
-                                ))
-                            ),
-                            Div(
-                                Div("Server Only", cls=combine_classes(
-                                    font_weight.medium,
-                                    text_dui.base_content
-                                )),
-                                Div("FASTHTML_BROWSER=none", cls=combine_classes(
-                                    font_size.sm,
-                                    font_family.mono,
-                                    text_dui.base_content.opacity(60)
-                                ))
-                            ),
-                            cls=str(list_row)
-                        ),
-                        Li(
-                            Div(
-                                Span("Default", cls=combine_classes(
-                                    badge,
-                                    badge_colors.success,
-                                    badge_sizes.lg
-                                ))
-                            ),
-                            Div(
-                                Div("Default Browser", cls=combine_classes(
-                                    font_weight.medium,
-                                    text_dui.base_content
-                                )),
-                                Div("Opens in your default web browser", cls=combine_classes(
-                                    font_size.sm,
-                                    text_dui.base_content.opacity(60)
-                                ))
-                            ),
-                            cls=str(list_row)
-                        ),
-                        cls=combine_classes(list_ui, bg_dui.base_200, rounded.lg, p(2))
-                    ),
-                    cls=str(card_body)
-                ),
-                cls=combine_classes(card, bg_dui.base_100, shadow.md, m.t(6))
+            # Footer
+            Div(
+                P(f"Last updated: {datetime.now().strftime('%H:%M:%S')}",
+                  cls=combine_classes(text_dui.base_content.opacity(50), font_size.xs, text_align.center)),
+                cls=str(m.t(8))
             ),
 
             cls=combine_classes(p(6), max_w.screen_2xl, m.auto)
         ),
-        cls=combine_classes(min_h.screen, bg_dui.base_100)
+        cls=combine_classes(min_h.screen, bg_dui.base_200)
     )
 
-def system_info_stats():
-    """Generate system info stats components."""
-    is_appimage = os.environ.get('APPIMAGE')
-    return [
-        Div(
-            Div("Process ID", cls=str(stat_title)),
-            Div(str(os.getpid()), cls=str(stat_value)),
-            cls=str(stat)
-        ),
-        Div(
-            Div("Working Directory", cls=str(stat_title)),
-            Div(str(WORK_DIR if is_appimage else os.getcwd()),
-                cls=combine_classes(stat_value, font_size.sm, break_all)),
-            cls=str(stat)
-        ),
-        Div(
-            Div("AppImage", cls=str(stat_title)),
-            Div("Yes" if is_appimage else "No",
-                cls=combine_classes(stat_value,
-                                   text_dui.success if is_appimage else text_dui.base_content)),
-            cls=str(stat)
-        ),
-        Div(
-            Div("Timestamp", cls=str(stat_title)),
-            Div(datetime.now().strftime('%H:%M:%S'), cls=str(stat_value)),
-            Div(datetime.now().strftime('%Y-%m-%d'), cls=str(stat_desc)),
-            cls=str(stat)
-        ),
-    ]
+@rt('/stream_updates')
+async def stream_updates():
+    """SSE endpoint for streaming system updates."""
+    async def update_stream():
+        try:
+            while True:
+                # Get current system stats
+                cpu_info = get_cpu_info()
+                mem_info = get_memory_info()
+                disk_info = get_disk_info()
+                gpu_info = check_gpu()
 
-@rt('/increment', methods=['POST'])
-def increment():
-    global counter
-    counter += 1
-    return Span(counter, id="counter",
-                cls=combine_classes(
-                    font_size._5xl,
-                    font_weight.bold,
-                    text_dui.primary
+                # Create OOB swap elements for each card
+                updates = []
+
+                # Update CPU card
+                updates.append(oob_swap(
+                    render_cpu_card(cpu_info),
+                    target_id="cpu-card-body",
+                    swap_type="outerHTML"
                 ))
 
-@rt('/add-todo', methods=['POST'])
-def add_todo(task: str):
-    todos.append(task)
-    return Ul(*[Li(todo, cls=combine_classes(
-                  p(3),
-                  bg_dui.base_200,
-                  rounded.lg,
-                  text_dui.base_content,
-                  bg_dui.base_300.hover,
-                  m.b(2)
-              ))
-              for todo in todos],
-              id="todo-list",
-              cls=str(space.y(1)))
+                # Update Memory card
+                updates.append(oob_swap(
+                    render_memory_card(mem_info),
+                    target_id="memory-card-body",
+                    swap_type="outerHTML"
+                ))
 
-@rt('/system-info')
-def system_info():
-    return Div(
-        Div(
-            H2("System Information", cls=combine_classes(card_title, text_dui.base_content)),
-            Button("Refresh",
-                   cls=combine_classes(btn, btn_colors.primary, btn_sizes.sm, btn_styles.ghost),
-                   hx_get="/system-info",
-                   hx_target="#system-info",
-                   hx_swap="outerHTML"),
-            cls=combine_classes(flex_display, justify.between, items.center)
-        ),
-        Div(
-            *system_info_stats(),
-            cls=combine_classes(stats, bg_dui.base_200, rounded.lg, w.full, m.t(4))
-        ),
-        cls=str(card_body),
-        id="system-info"
-    )
+                # Update Disk card (less frequent updates needed)
+                if int(time.time()) % 10 == 0:  # Every 10 seconds
+                    updates.append(oob_swap(
+                        render_disk_card(disk_info),
+                        target_id="disk-card-body",
+                        swap_type="outerHTML"
+                    ))
+
+                # Update GPU card if available
+                if gpu_info['available']:
+                    updates.append(oob_swap(
+                        render_gpu_card(gpu_info),
+                        target_id="gpu-card-body",
+                        swap_type="outerHTML"
+                    ))
+
+                # Update timestamp
+                updates.append(oob_swap(
+                    P(f"Monitoring {get_static_system_info()['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                      cls=combine_classes(text_dui.base_content.opacity(60), font_size.sm)),
+                    target_id="timestamp",
+                    swap_type="innerHTML"
+                ))
+
+                # Send all updates
+                yield sse_message(Div(*updates))
+
+                # Wait before next update
+                await asyncio.sleep(2)  # Update every 2 seconds
+
+        except Exception as e:
+            print(f"Error in update stream: {e}")
+
+    return EventStream(update_stream())
 
 def open_browser(url):
     """Open browser based on environment settings."""
@@ -382,15 +634,13 @@ def open_browser(url):
         return
 
     if browser_mode == 'app':
-        # Try to open in app mode (standalone window)
         print(f"Opening in app mode at {url}")
 
-        # Try different browsers in app mode
         if sys.platform == 'linux':
             browsers = [
                 ['google-chrome', '--app=' + url],
                 ['chromium', '--app=' + url],
-                ['firefox', '--new-window', url],  # Firefox doesn't have true app mode
+                ['firefox', '--new-window', url],
             ]
 
             for browser_cmd in browsers:
@@ -402,7 +652,6 @@ def open_browser(url):
                 except FileNotFoundError:
                     continue
 
-    # Default: open in regular browser
     print(f"Opening in browser at {url}")
     webbrowser.open(url)
 
@@ -411,7 +660,6 @@ if __name__ == '__main__':
     import threading
     import time
 
-    # The actual URL with the port we found
     url = f"http://{HOST}:{PORT}"
 
     # Open browser after a short delay
@@ -419,7 +667,7 @@ if __name__ == '__main__':
     timer.daemon = True
     timer.start()
 
-    print(f"Starting FastHTML server on {url}")
+    print(f"Starting System Monitor Dashboard on {url}")
 
-    # Run the server with the actual port
+    # Run the server
     uvicorn.run(app, host=HOST, port=PORT, log_level="info")
