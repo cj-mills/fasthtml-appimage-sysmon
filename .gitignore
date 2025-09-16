@@ -1,0 +1,46 @@
+# Build artifacts
+build/
+*.AppImage
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# AppImage specific
+AppDir/
+squashfs-root/
+*.AppDir/
+
+# Temporary files
+*.tmp
+*.temp
+*~
+
+# Distribution
+dist/
+*.tar.gz
+*.zip
+
+
+*.sesskey

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=FastHTML Demo
+Comment=FastHTML AppImage Demo Application
+Exec=AppRun
+Icon=fasthtml-icon
+Categories=Development;WebDevelopment;
+Terminal=false
+StartupNotify=true

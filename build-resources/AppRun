@@ -1,0 +1,119 @@
+#!/bin/bash
+set -e
+
+# This script is the entry point for the AppImage
+# It sets up the environment and launches the FastHTML application
+
+# Debug mode
+if [ ! -z "$DEBUG" ]; then
+    echo "=== FastHTML AppImage Debug Mode ==="
+    env | grep -E "APPIMAGE|APPDIR|FASTHTML"
+    set -x
+fi
+
+# Find the AppDir
+if [ -z "$APPDIR" ]; then
+    # If not running from AppImage, find the AppDir
+    APPDIR="$(dirname "$(readlink -f "${0}")")"
+fi
+
+echo "FastHTML AppImage starting..."
+echo "AppDir: $APPDIR"
+
+# Set up paths for micromamba environment
+export MAMBA_ROOT_PREFIX="$APPDIR/micromamba"
+export CONDA_PREFIX="$APPDIR/micromamba/envs/fasthtml-app"
+
+# Add micromamba and Python to PATH
+export PATH="$APPDIR/micromamba/bin:$CONDA_PREFIX/bin:$PATH"
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib:$LD_LIBRARY_PATH"
+export PYTHONPATH="$APPDIR/src:$PYTHONPATH"
+
+# Ensure clean Python environment
+unset PYTHONHOME
+export PYTHONNOUSERSITE=1
+
+# Set application-specific environment variables
+export FASTHTML_HOST="${FASTHTML_HOST:-127.0.0.1}"
+export FASTHTML_PORT="${FASTHTML_PORT:-0}"  # 0 = auto-find free port
+export FASTHTML_BROWSER="${FASTHTML_BROWSER:-default}"  # default, app, none
+
+# Check if micromamba and environment exist
+if [ ! -f "$APPDIR/micromamba/bin/micromamba" ]; then
+    echo "ERROR: Micromamba not found in AppImage!"
+    echo "The AppImage may not have been built correctly."
+    exit 1
+fi
+
+if [ ! -d "$CONDA_PREFIX" ]; then
+    echo "ERROR: FastHTML environment not found!"
+    echo "Expected at: $CONDA_PREFIX"
+    exit 1
+fi
+
+# Activate the micromamba environment
+eval "$($APPDIR/micromamba/bin/micromamba shell hook --shell bash)"
+micromamba activate fasthtml-app
+
+# Verify Python is available
+if ! command -v python &> /dev/null; then
+    echo "ERROR: Python not found in environment!"
+    exit 1
+fi
+
+# Show Python info in debug mode
+if [ ! -z "$DEBUG" ]; then
+    echo "Python location: $(which python)"
+    echo "Python version: $(python --version)"
+    echo "Pip packages:"
+    pip list | grep -E "fasthtml|uvicorn"
+fi
+
+# Change to app directory
+cd "$APPDIR"
+
+# Handle different run modes
+case "${1:-run}" in
+    run)
+        echo "Starting FastHTML application..."
+        echo "Server will start at http://$FASTHTML_HOST:<auto-assigned-port>"
+        echo "Browser mode: $FASTHTML_BROWSER"
+        echo ""
+        echo "Press Ctrl+C to stop the server"
+        echo ""
+
+        # Run the FastHTML application
+        exec python "$APPDIR/src/app.py"
+        ;;
+
+    shell)
+        echo "Entering shell with FastHTML environment..."
+        exec bash
+        ;;
+
+    python)
+        shift
+        exec python "$@"
+        ;;
+
+    pip)
+        shift
+        exec pip "$@"
+        ;;
+
+    *)
+        echo "FastHTML AppImage"
+        echo ""
+        echo "Usage:"
+        echo "  $0 [run]      - Run the FastHTML application (default)"
+        echo "  $0 shell      - Enter shell with FastHTML environment"
+        echo "  $0 python ... - Run Python with arguments"
+        echo "  $0 pip ...    - Run pip with arguments"
+        echo ""
+        echo "Environment variables:"
+        echo "  FASTHTML_HOST=127.0.0.1     - Server host"
+        echo "  FASTHTML_PORT=0              - Server port (0=auto)"
+        echo "  FASTHTML_BROWSER=default     - Browser mode (default/app/none)"
+        echo "  DEBUG=1                       - Enable debug output"
+        ;;
+esac
