@@ -173,6 +173,91 @@ def get_disk_info():
 
     return disk_info
 
+# Network monitoring state for bandwidth calculation
+NETWORK_STATS_CACHE = {}
+
+def get_network_info():
+    """Get network interface information and statistics."""
+    global NETWORK_STATS_CACHE
+
+    interfaces = []
+    stats = psutil.net_io_counters(pernic=True)
+    addrs = psutil.net_if_addrs()
+
+    current_time = time.time()
+
+    for interface, io_stats in stats.items():
+        # Skip loopback interface
+        if interface == 'lo' or interface.startswith('veth'):
+            continue
+
+        # Get IP addresses for this interface
+        ip_addrs = []
+        if interface in addrs:
+            for addr in addrs[interface]:
+                if addr.family == socket.AF_INET:  # IPv4
+                    ip_addrs.append(addr.address)
+
+        # Calculate bandwidth (bytes per second)
+        bytes_sent_per_sec = 0
+        bytes_recv_per_sec = 0
+
+        if interface in NETWORK_STATS_CACHE:
+            prev_stats = NETWORK_STATS_CACHE[interface]
+            time_diff = current_time - prev_stats['time']
+
+            if time_diff > 0:
+                bytes_sent_per_sec = (io_stats.bytes_sent - prev_stats['bytes_sent']) / time_diff
+                bytes_recv_per_sec = (io_stats.bytes_recv - prev_stats['bytes_recv']) / time_diff
+
+        # Update cache
+        NETWORK_STATS_CACHE[interface] = {
+            'bytes_sent': io_stats.bytes_sent,
+            'bytes_recv': io_stats.bytes_recv,
+            'time': current_time
+        }
+
+        interfaces.append({
+            'name': interface,
+            'ip_addresses': ip_addrs,
+            'bytes_sent': io_stats.bytes_sent,
+            'bytes_recv': io_stats.bytes_recv,
+            'packets_sent': io_stats.packets_sent,
+            'packets_recv': io_stats.packets_recv,
+            'bytes_sent_per_sec': max(0, bytes_sent_per_sec),  # Ensure non-negative
+            'bytes_recv_per_sec': max(0, bytes_recv_per_sec),
+            'errors_in': io_stats.errin,
+            'errors_out': io_stats.errout,
+            'drops_in': io_stats.dropin,
+            'drops_out': io_stats.dropout
+        })
+
+    # Get connection statistics
+    connections = psutil.net_connections(kind='inet')
+    conn_stats = {
+        'total': len(connections),
+        'established': sum(1 for conn in connections if conn.status == 'ESTABLISHED'),
+        'listen': sum(1 for conn in connections if conn.status == 'LISTEN'),
+        'time_wait': sum(1 for conn in connections if conn.status == 'TIME_WAIT'),
+        'close_wait': sum(1 for conn in connections if conn.status == 'CLOSE_WAIT')
+    }
+
+    return {
+        'interfaces': interfaces,
+        'connections': conn_stats
+    }
+
+def format_bandwidth(bytes_per_sec):
+    """Format bandwidth to human readable string."""
+    if bytes_per_sec < 1024:
+        return f"{bytes_per_sec:.0f} B/s"
+    elif bytes_per_sec < 1024 * 1024:
+        return f"{bytes_per_sec / 1024:.1f} KB/s"
+    elif bytes_per_sec < 1024 * 1024 * 1024:
+        return f"{bytes_per_sec / (1024 * 1024):.1f} MB/s"
+    else:
+        return f"{bytes_per_sec / (1024 * 1024 * 1024):.1f} GB/s"
+
 def check_gpu():
     """Check for GPU availability and get info."""
     gpu_info = {'available': False, 'type': 'None', 'details': {}}
@@ -401,6 +486,109 @@ def render_disk_card(disk_info):
         id="disk-card-body"
     )
 
+def render_network_card(net_info):
+    """Render the network monitoring card."""
+    interfaces = net_info['interfaces']
+    connections = net_info['connections']
+
+    if not interfaces:
+        return Div(
+            Div(
+                H3("Network", cls=combine_classes(card_title, text_dui.base_content)),
+                cls=str(m.b(4))
+            ),
+            Div(
+                "No active network interfaces detected",
+                cls=combine_classes(alert, alert_colors.info)
+            ),
+            cls=str(card_body)
+        )
+
+    return Div(
+        Div(
+            H3("Network", cls=combine_classes(card_title, text_dui.base_content)),
+            Span(
+                f"{len(interfaces)} Active",
+                cls=combine_classes(badge, badge_colors.info, badge_sizes.lg)
+            ),
+            cls=combine_classes(flex_display, justify.between, items.center, m.b(4))
+        ),
+
+        # Network interfaces
+        Div(
+            *[Div(
+                # Interface header
+                Div(
+                    P(interface['name'], cls=combine_classes(font_size.sm, font_weight.medium)),
+                    P(', '.join(interface['ip_addresses']) if interface['ip_addresses'] else 'No IP',
+                      cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))),
+                    cls=str(m.b(2))
+                ),
+
+                # Bandwidth meters
+                Div(
+                    # Upload speed
+                    Div(
+                        Div(
+                            Span("↑ Upload", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                            Span(format_bandwidth(interface['bytes_sent_per_sec']),
+                                 cls=combine_classes(font_size.xs, text_dui.info, font_weight.medium)),
+                            cls=combine_classes(flex_display, justify.between)
+                        ),
+                        Progress(
+                            value=str(min(100, interface['bytes_sent_per_sec'] / 1024 / 1024 * 10)),  # Scale to MB/s
+                            max="100",
+                            cls=combine_classes(progress, progress_colors.info, w.full, h(1))
+                        ),
+                        cls=str(m.b(2))
+                    ),
+
+                    # Download speed
+                    Div(
+                        Div(
+                            Span("↓ Download", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                            Span(format_bandwidth(interface['bytes_recv_per_sec']),
+                                 cls=combine_classes(font_size.xs, text_dui.success, font_weight.medium)),
+                            cls=combine_classes(flex_display, justify.between)
+                        ),
+                        Progress(
+                            value=str(min(100, interface['bytes_recv_per_sec'] / 1024 / 1024 * 10)),  # Scale to MB/s
+                            max="100",
+                            cls=combine_classes(progress, progress_colors.success, w.full, h(1))
+                        ),
+                        cls=str(m.b(2))
+                    ),
+
+                    # Statistics
+                    Div(
+                        Span(f"Total: ↑{format_bytes(interface['bytes_sent'])} ↓{format_bytes(interface['bytes_recv'])}",
+                             cls=combine_classes(font_size.xs, text_dui.base_content.opacity(50))),
+                        cls=str(m.t(1))
+                    ),
+                ),
+
+                cls=combine_classes(p(3), bg_dui.base_200, rounded.lg, m.b(3))
+            ) for interface in interfaces[:3]],  # Limit to 3 interfaces for UI clarity
+            cls=""
+        ),
+
+        # Connection statistics
+        Div(
+            P("Connections", cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
+            Div(
+                render_stat_card("Total", str(connections['total'])),
+                render_stat_card("Established", str(connections['established'])),
+                render_stat_card("Listening", str(connections['listen'])),
+                render_stat_card("Time Wait", str(connections['time_wait'])),
+                cls=combine_classes(stats, bg_dui.base_200, rounded.lg, p(2), font_size.xs)
+            ),
+            cls=str(m.t(3))
+        ),
+
+        cls=str(card_body),
+        id="network-card-body"
+    )
+
 def render_gpu_card(gpu_info):
     """Render the GPU information card."""
     if not gpu_info['available']:
@@ -463,6 +651,7 @@ def get():
     cpu_info = get_cpu_info()
     mem_info = get_memory_info()
     disk_info = get_disk_info()
+    net_info = get_network_info()
     gpu_info = check_gpu()
 
     return Div(
@@ -538,6 +727,13 @@ def get():
                     id="disk-card"
                 ),
 
+                # Network Monitoring Card
+                Div(
+                    render_network_card(net_info),
+                    cls=combine_classes(card, bg_dui.base_100, shadow.md),
+                    id="network-card"
+                ),
+
                 # GPU Information Card
                 Div(
                     render_gpu_card(gpu_info),
@@ -570,6 +766,7 @@ async def stream_updates():
                 cpu_info = get_cpu_info()
                 mem_info = get_memory_info()
                 disk_info = get_disk_info()
+                net_info = get_network_info()
                 gpu_info = check_gpu()
 
                 # Create OOB swap elements for each card
@@ -596,6 +793,13 @@ async def stream_updates():
                         target_id="disk-card-body",
                         swap_type="outerHTML"
                     ))
+
+                # Update Network card
+                updates.append(oob_swap(
+                    render_network_card(net_info),
+                    target_id="network-card-body",
+                    swap_type="outerHTML"
+                ))
 
                 # Update GPU card if available
                 if gpu_info['available']:
