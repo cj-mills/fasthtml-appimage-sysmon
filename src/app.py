@@ -69,19 +69,7 @@ from utils import (
     get_temperature_badge_color, 
     open_browser
 )
-from config import (
-    PORT_ENV, 
-    PORT, 
-    HOST, 
-    WORK_DIR, 
-    MAX_CPU_CORES, 
-    MAX_PROCESSES, 
-    REFRESH_INTERVALS, 
-    LAST_UPDATE_TIMES, 
-    STATIC_SYSTEM_INFO, 
-    NETWORK_STATS_CACHE, 
-    SSE_CONFIG
-)
+import config
 from monitors import (
     get_cpu_info, 
     get_static_system_info, 
@@ -99,7 +87,7 @@ from components import (
 
 
 # Initialize SSE Broadcast Manager
-sse_manager = SSEBroadcastManager(**SSE_CONFIG)
+sse_manager = SSEBroadcastManager(**config.SSE_CONFIG)
 
 # Initialize HTMX SSE Connector
 htmx_sse_connector = HTMXSSEConnector()
@@ -175,11 +163,11 @@ def render_cpu_card(cpu_info):
             P("Per Core Usage", cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
             Div(
                 *[render_progress_bar(percent, label=f"Core {i}")
-                  for i, percent in enumerate(cpu_info['percent_per_core'][:MAX_CPU_CORES])],
+                  for i, percent in enumerate(cpu_info['percent_per_core'][:config.MAX_CPU_CORES])],
                 cls=str(space.y(2))
             ),
             cls=str(m.t(2))
-        ) if len(cpu_info['percent_per_core']) <= MAX_CPU_CORES else None,
+        ) if len(cpu_info['percent_per_core']) <= config.MAX_CPU_CORES else None,
 
         cls=str(card_body),
         id="cpu-card-body"
@@ -819,7 +807,7 @@ def render_settings_modal():
                 Div(
                     Label(
                         Span("CPU", cls=combine_classes(font_weight.medium)),
-                        Span(f"{REFRESH_INTERVALS['cpu']}s", id="cpu-interval-value",
+                        Span(f"{config.REFRESH_INTERVALS['cpu']}s", id="cpu-interval-value",
                              cls=combine_classes(text_dui.primary, font_weight.medium)),
                         cls=combine_classes(label, flex_display, justify.between, m.b(2))
                     ),
@@ -827,7 +815,7 @@ def render_settings_modal():
                         type="range",
                         min="1",
                         max="30",
-                        value=str(REFRESH_INTERVALS['cpu']),
+                        value=str(config.REFRESH_INTERVALS['cpu']),
                         id="cpu-interval",
                         cls=combine_classes(range_dui, range_colors.primary, w.full),
                         oninput="document.getElementById('cpu-interval-value').textContent = this.value + 's'"
@@ -839,7 +827,7 @@ def render_settings_modal():
                 Div(
                     Label(
                         Span("Memory", cls=combine_classes(font_weight.medium)),
-                        Span(f"{REFRESH_INTERVALS['memory']}s", id="memory-interval-value",
+                        Span(f"{config.REFRESH_INTERVALS['memory']}s", id="memory-interval-value",
                              cls=combine_classes(text_dui.primary, font_weight.medium)),
                         cls=combine_classes(label, flex_display, justify.between, m.b(2))
                     ),
@@ -847,7 +835,7 @@ def render_settings_modal():
                         type="range",
                         min="1",
                         max="30",
-                        value=str(REFRESH_INTERVALS['memory']),
+                        value=str(config.REFRESH_INTERVALS['memory']),
                         id="memory-interval",
                         cls=combine_classes(range_dui, range_colors.primary, w.full),
                         oninput="document.getElementById('memory-interval-value').textContent = this.value + 's'"
@@ -859,7 +847,7 @@ def render_settings_modal():
                 Div(
                     Label(
                         Span("Disk", cls=combine_classes(font_weight.medium)),
-                        Span(f"{REFRESH_INTERVALS['disk']}s", id="disk-interval-value",
+                        Span(f"{config.REFRESH_INTERVALS['disk']}s", id="disk-interval-value",
                              cls=combine_classes(text_dui.primary, font_weight.medium)),
                         cls=combine_classes(label, flex_display, justify.between, m.b(2))
                     ),
@@ -867,7 +855,7 @@ def render_settings_modal():
                         type="range",
                         min="5",
                         max="60",
-                        value=str(REFRESH_INTERVALS['disk']),
+                        value=str(config.REFRESH_INTERVALS['disk']),
                         id="disk-interval",
                         cls=combine_classes(range_dui, range_colors.primary, w.full),
                         oninput="document.getElementById('disk-interval-value').textContent = this.value + 's'"
@@ -879,7 +867,7 @@ def render_settings_modal():
                 Div(
                     Label(
                         Span("Network", cls=combine_classes(font_weight.medium)),
-                        Span(f"{REFRESH_INTERVALS['network']}s", id="network-interval-value",
+                        Span(f"{config.REFRESH_INTERVALS['network']}s", id="network-interval-value",
                              cls=combine_classes(text_dui.primary, font_weight.medium)),
                         cls=combine_classes(label, flex_display, justify.between, m.b(2))
                     ),
@@ -887,7 +875,7 @@ def render_settings_modal():
                         type="range",
                         min="1",
                         max="30",
-                        value=str(REFRESH_INTERVALS['network']),
+                        value=str(config.REFRESH_INTERVALS['network']),
                         id="network-interval",
                         cls=combine_classes(range_dui, range_colors.primary, w.full),
                         oninput="document.getElementById('network-interval-value').textContent = this.value + 's'"
@@ -899,7 +887,7 @@ def render_settings_modal():
                 Div(
                     Label(
                         Span("Processes", cls=combine_classes(font_weight.medium)),
-                        Span(f"{REFRESH_INTERVALS['process']}s", id="process-interval-value",
+                        Span(f"{config.REFRESH_INTERVALS['process']}s", id="process-interval-value",
                              cls=combine_classes(text_dui.primary, font_weight.medium)),
                         cls=combine_classes(label, flex_display, justify.between, m.b(2))
                     ),
@@ -907,7 +895,7 @@ def render_settings_modal():
                         type="range",
                         min="2",
                         max="60",
-                        value=str(REFRESH_INTERVALS['process']),
+                        value=str(config.REFRESH_INTERVALS['process']),
                         id="process-interval",
                         cls=combine_classes(range_dui, range_colors.primary, w.full),
                         oninput="document.getElementById('process-interval-value').textContent = this.value + 's'"
@@ -919,7 +907,7 @@ def render_settings_modal():
                 Div(
                     Label(
                         Span("GPU", cls=combine_classes(font_weight.medium)),
-                        Span(f"{REFRESH_INTERVALS['gpu']}s", id="gpu-interval-value",
+                        Span(f"{config.REFRESH_INTERVALS['gpu']}s", id="gpu-interval-value",
                              cls=combine_classes(text_dui.primary, font_weight.medium)),
                         cls=combine_classes(label, flex_display, justify.between, m.b(2))
                     ),
@@ -927,7 +915,7 @@ def render_settings_modal():
                         type="range",
                         min="1",
                         max="30",
-                        value=str(REFRESH_INTERVALS['gpu']),
+                        value=str(config.REFRESH_INTERVALS['gpu']),
                         id="gpu-interval",
                         cls=combine_classes(range_dui, range_colors.primary, w.full),
                         oninput="document.getElementById('gpu-interval-value').textContent = this.value + 's'"
@@ -939,7 +927,7 @@ def render_settings_modal():
                 Div(
                     Label(
                         Span("Temperature", cls=combine_classes(font_weight.medium)),
-                        Span(f"{REFRESH_INTERVALS['temperature']}s", id="temperature-interval-value",
+                        Span(f"{config.REFRESH_INTERVALS['temperature']}s", id="temperature-interval-value",
                              cls=combine_classes(text_dui.primary, font_weight.medium)),
                         cls=combine_classes(label, flex_display, justify.between, m.b(2))
                     ),
@@ -947,7 +935,7 @@ def render_settings_modal():
                         type="range",
                         min="2",
                         max="60",
-                        value=str(REFRESH_INTERVALS['temperature']),
+                        value=str(config.REFRESH_INTERVALS['temperature']),
                         id="temperature-interval",
                         cls=combine_classes(range_dui, range_colors.primary, w.full),
                         oninput="document.getElementById('temperature-interval-value').textContent = this.value + 's'"
@@ -1120,18 +1108,17 @@ def get():
 @rt('/update_intervals', methods=['POST'])
 async def update_intervals(cpu: int, memory: int, disk: int, network: int, process: int, gpu: int, temperature: int):
     """Update the refresh intervals for each component."""
-    global REFRESH_INTERVALS
-    REFRESH_INTERVALS['cpu'] = int(cpu)
-    REFRESH_INTERVALS['memory'] = int(memory)
-    REFRESH_INTERVALS['disk'] = int(disk)
-    REFRESH_INTERVALS['network'] = int(network)
-    REFRESH_INTERVALS['process'] = int(process)
-    REFRESH_INTERVALS['gpu'] = int(gpu)
-    REFRESH_INTERVALS['temperature'] = int(temperature)
+    config.REFRESH_INTERVALS['cpu'] = int(cpu)
+    config.REFRESH_INTERVALS['memory'] = int(memory)
+    config.REFRESH_INTERVALS['disk'] = int(disk)
+    config.REFRESH_INTERVALS['network'] = int(network)
+    config.REFRESH_INTERVALS['process'] = int(process)
+    config.REFRESH_INTERVALS['gpu'] = int(gpu)
+    config.REFRESH_INTERVALS['temperature'] = int(temperature)
 
     # Reset last update times to apply changes immediately
-    for key in LAST_UPDATE_TIMES:
-        LAST_UPDATE_TIMES[key] = 0
+    for key in config.LAST_UPDATE_TIMES:
+        config.LAST_UPDATE_TIMES[key] = 0
 
     return ""  # Empty response for HTMX
 
@@ -1145,47 +1132,47 @@ async def stream_updates():
                 updates = []
 
                 # Check and update CPU if interval has passed
-                if current_time - LAST_UPDATE_TIMES['cpu'] >= REFRESH_INTERVALS['cpu']:
+                if current_time - config.LAST_UPDATE_TIMES['cpu'] >= config.REFRESH_INTERVALS['cpu']:
                     cpu_info = get_cpu_info()
                     updates.append(oob_swap(
                         render_cpu_card(cpu_info),
                         target_id="cpu-card-body",
                         swap_type="outerHTML"
                     ))
-                    LAST_UPDATE_TIMES['cpu'] = current_time
+                    config.LAST_UPDATE_TIMES['cpu'] = current_time
 
                 # Check and update Memory if interval has passed
-                if current_time - LAST_UPDATE_TIMES['memory'] >= REFRESH_INTERVALS['memory']:
+                if current_time - config.LAST_UPDATE_TIMES['memory'] >= config.REFRESH_INTERVALS['memory']:
                     mem_info = get_memory_info()
                     updates.append(oob_swap(
                         render_memory_card(mem_info),
                         target_id="memory-card-body",
                         swap_type="outerHTML"
                     ))
-                    LAST_UPDATE_TIMES['memory'] = current_time
+                    config.LAST_UPDATE_TIMES['memory'] = current_time
 
                 # Check and update Disk if interval has passed
-                if current_time - LAST_UPDATE_TIMES['disk'] >= REFRESH_INTERVALS['disk']:
+                if current_time - config.LAST_UPDATE_TIMES['disk'] >= config.REFRESH_INTERVALS['disk']:
                     disk_info = get_disk_info()
                     updates.append(oob_swap(
                         render_disk_card(disk_info),
                         target_id="disk-card-body",
                         swap_type="outerHTML"
                     ))
-                    LAST_UPDATE_TIMES['disk'] = current_time
+                    config.LAST_UPDATE_TIMES['disk'] = current_time
 
                 # Check and update Network if interval has passed
-                if current_time - LAST_UPDATE_TIMES['network'] >= REFRESH_INTERVALS['network']:
+                if current_time - config.LAST_UPDATE_TIMES['network'] >= config.REFRESH_INTERVALS['network']:
                     net_info = get_network_info()
                     updates.append(oob_swap(
                         render_network_card(net_info),
                         target_id="network-card-body",
                         swap_type="outerHTML"
                     ))
-                    LAST_UPDATE_TIMES['network'] = current_time
+                    config.LAST_UPDATE_TIMES['network'] = current_time
 
                 # Check and update Process if interval has passed
-                if current_time - LAST_UPDATE_TIMES['process'] >= REFRESH_INTERVALS['process']:
+                if current_time - config.LAST_UPDATE_TIMES['process'] >= config.REFRESH_INTERVALS['process']:
                     proc_info = get_process_info()
                     # Use fine-grained updates for process card
                     updates.extend([
@@ -1210,10 +1197,10 @@ async def stream_updates():
                             swap_type="outerHTML"
                         )
                     ])
-                    LAST_UPDATE_TIMES['process'] = current_time
+                    config.LAST_UPDATE_TIMES['process'] = current_time
 
                 # Check and update GPU if interval has passed and available
-                if current_time - LAST_UPDATE_TIMES['gpu'] >= REFRESH_INTERVALS['gpu']:
+                if current_time - config.LAST_UPDATE_TIMES['gpu'] >= config.REFRESH_INTERVALS['gpu']:
                     gpu_info = check_gpu()
                     if gpu_info['available']:
                         updates.append(oob_swap(
@@ -1221,17 +1208,17 @@ async def stream_updates():
                             target_id="gpu-card-body",
                             swap_type="outerHTML"
                         ))
-                    LAST_UPDATE_TIMES['gpu'] = current_time
+                    config.LAST_UPDATE_TIMES['gpu'] = current_time
 
                 # Check and update Temperature if interval has passed
-                if current_time - LAST_UPDATE_TIMES['temperature'] >= REFRESH_INTERVALS['temperature']:
+                if current_time - config.LAST_UPDATE_TIMES['temperature'] >= config.REFRESH_INTERVALS['temperature']:
                     temp_info = get_temperature_info()
                     updates.append(oob_swap(
                         render_temperature_card(temp_info),
                         target_id="temperature-card-body",
                         swap_type="outerHTML"
                     ))
-                    LAST_UPDATE_TIMES['temperature'] = current_time
+                    config.LAST_UPDATE_TIMES['temperature'] = current_time
 
                 # Always update timestamp
                 if updates:  # Only add timestamp if there are other updates
@@ -1247,7 +1234,7 @@ async def stream_updates():
                     yield sse_message(Div(*updates))
 
                 # Wait before next check - use minimum interval for responsiveness
-                min_interval = min(REFRESH_INTERVALS.values())
+                min_interval = min(config.REFRESH_INTERVALS.values())
                 await asyncio.sleep(min(1, min_interval))  # At least 1 second
 
         except Exception as e:
@@ -1260,7 +1247,7 @@ if __name__ == '__main__':
     import threading
     import time
 
-    url = f"http://{HOST}:{PORT}"
+    url = f"http://{config.HOST}:{config.PORT}"
 
     # Open browser after a short delay
     timer = threading.Timer(1.5, lambda: open_browser(url))
@@ -1270,4 +1257,4 @@ if __name__ == '__main__':
     print(f"Starting System Monitor Dashboard on {url}")
 
     # Run the server
-    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+    uvicorn.run(app, host=config.HOST, port=config.PORT, log_level="info")

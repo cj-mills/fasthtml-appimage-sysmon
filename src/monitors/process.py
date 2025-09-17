@@ -3,10 +3,10 @@ Process monitoring module.
 """
 
 import psutil
-from config import MAX_PROCESSES
+import config
 
 
-def get_process_info(top_n=MAX_PROCESSES):
+def get_process_info(top_n=config.MAX_PROCESSES):
     """Get top processes by CPU and memory usage."""
     processes = []
 
