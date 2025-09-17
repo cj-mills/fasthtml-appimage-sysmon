@@ -3,3 +3,4 @@ sqlite-minutils>=4.0.3
 cjm-fasthtml-daisyui
 cjm_fasthtml_sse
 psutil
+nvitop
