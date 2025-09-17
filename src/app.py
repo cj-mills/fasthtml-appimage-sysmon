@@ -305,32 +305,217 @@ def get_process_info(top_n=5):
     }
 
 def check_gpu():
-    """Check for GPU availability and get info."""
-    gpu_info = {'available': False, 'type': 'None', 'details': {}}
+    """Check for GPU availability and get info using nvitop."""
+    gpu_info = {'available': False, 'type': 'None', 'details': {}, 'processes': []}
 
-    # Check for NVIDIA GPU
     try:
-        result = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu',
-                               '--format=csv,noheader,nounits'],
-                              capture_output=True, text=True, timeout=2)
-        if result.returncode == 0:
-            lines = result.stdout.strip().split('\n')
-            for i, line in enumerate(lines):
-                parts = [p.strip() for p in line.split(',')]
-                if len(parts) >= 5:
-                    gpu_info['available'] = True
-                    gpu_info['type'] = 'NVIDIA'
-                    gpu_info['details'][f'gpu_{i}'] = {
-                        'name': parts[0],
-                        'memory_total': int(parts[1]),
-                        'memory_used': int(parts[2]),
-                        'memory_free': int(parts[3]),
-                        'utilization': int(parts[4])
-                    }
-    except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
-        pass
+        import nvitop
+        from nvitop import Device, GpuProcess, NA
+
+        devices = Device.all()  # Get all NVIDIA devices
+        if devices:
+            gpu_info['available'] = True
+            gpu_info['type'] = 'NVIDIA'
+
+            for i, device in enumerate(devices):
+                # Get memory in MB for consistency, with NA checks
+                mem_total = device.memory_total()
+                mem_used = device.memory_used()
+                mem_free = device.memory_free()
+
+                memory_total_mb = mem_total // (1024 * 1024) if mem_total and mem_total != NA else 0
+                memory_used_mb = mem_used // (1024 * 1024) if mem_used and mem_used != NA else 0
+                memory_free_mb = mem_free // (1024 * 1024) if mem_free and mem_free != NA else 0
+
+                # Get power values and convert from milliwatts to watts
+                power_usage_mw = device.power_usage()
+                power_limit_mw = device.power_limit()
+                power_usage_w = power_usage_mw / 1000.0 if power_usage_mw and power_usage_mw != NA else None
+                power_limit_w = power_limit_mw / 1000.0 if power_limit_mw and power_limit_mw != NA else None
+
+                # Get other metrics with NA checks
+                gpu_util = device.gpu_utilization()
+                temp = device.temperature()
+                fan = device.fan_speed()
+                enc_util = device.encoder_utilization()
+                dec_util = device.decoder_utilization()
+
+                gpu_info['details'][f'gpu_{i}'] = {
+                    'name': device.name(),
+                    'memory_total': memory_total_mb,
+                    'memory_used': memory_used_mb,
+                    'memory_free': memory_free_mb,
+                    'utilization': gpu_util if gpu_util != NA else 0,
+                    'temperature': temp if temp != NA else None,
+                    'power_usage': power_usage_w,  # Now in watts
+                    'power_limit': power_limit_w,  # Now in watts
+                    'fan_speed': fan if fan != NA else None,
+                    'compute_processes': len(device.processes()),
+                    'encoder_utilization': enc_util if enc_util != NA else 0,
+                    'decoder_utilization': dec_util if dec_util != NA else 0,
+                }
+
+                # Get process information for this GPU
+                processes = device.processes()
+                if processes:
+                    try:
+                        # Take snapshots of processes for detailed info
+                        process_snapshots = GpuProcess.take_snapshots(processes.values(), failsafe=True)
+                        for snapshot in process_snapshots:
+                            # In snapshots, gpu_memory() is still a method according to the docs
+                            # But let's try accessing it as a property first, then as a method
+                            try:
+                                # Try as a method first (according to docs)
+                                gpu_mem = snapshot.gpu_memory() if callable(getattr(snapshot, 'gpu_memory', None)) else snapshot.gpu_memory
+                            except:
+                                # Fallback to property access
+                                gpu_mem = getattr(snapshot, 'gpu_memory', NA)
+
+                            gpu_memory_mb = gpu_mem // (1024 * 1024) if gpu_mem and gpu_mem != NA else 0
+
+                            # Get the process name - try different attributes
+                            proc_name = None
+                            if hasattr(snapshot, 'name') and callable(snapshot.name):
+                                try:
+                                    proc_name = snapshot.name()
+                                except:
+                                    pass
+                            if not proc_name and hasattr(snapshot, 'command'):
+                                proc_name = snapshot.command
+                            if not proc_name and hasattr(snapshot, 'username'):
+                                proc_name = f"{snapshot.username} (PID {snapshot.pid})"
+                            if not proc_name:
+                                proc_name = f"PID {snapshot.pid}"
+
+                            if proc_name and len(str(proc_name)) > 50:
+                                proc_name = str(proc_name)[:47] + "..."
+
+                            gpu_info['processes'].append({
+                                'pid': snapshot.pid,  # pid is a property on snapshot
+                                'name': str(proc_name),
+                                'gpu_memory_mb': gpu_memory_mb,
+                                'gpu_utilization': getattr(snapshot, 'gpu_sm_utilization', 0) if getattr(snapshot, 'gpu_sm_utilization', 0) != NA else 0,
+                                'device_id': i,
+                                'device_name': device.name()
+                            })
+                    except Exception as e:
+                        print(f"Error processing GPU processes: {e}, type: {type(e).__name__}, details: {str(e)}")
+
+    except ImportError:
+        # nvitop not available, fallback to nvidia-smi
+        try:
+            result = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total,memory.used,memory.free,utilization.gpu,temperature.gpu,power.draw,power.limit',
+                                   '--format=csv,noheader,nounits'],
+                                  capture_output=True, text=True, timeout=2)
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for i, line in enumerate(lines):
+                    parts = [p.strip() for p in line.split(',')]
+                    if len(parts) >= 5:
+                        gpu_info['available'] = True
+                        gpu_info['type'] = 'NVIDIA'
+                        gpu_info['details'][f'gpu_{i}'] = {
+                            'name': parts[0],
+                            'memory_total': int(float(parts[1])) if parts[1] and parts[1] != 'N/A' else 0,
+                            'memory_used': int(float(parts[2])) if parts[2] and parts[2] != 'N/A' else 0,
+                            'memory_free': int(float(parts[3])) if parts[3] and parts[3] != 'N/A' else 0,
+                            'utilization': int(float(parts[4])) if parts[4] and parts[4] != 'N/A' else 0,
+                            'temperature': float(parts[5]) if len(parts) > 5 and parts[5] and parts[5] != 'N/A' else None,
+                            'power_usage': float(parts[6]) if len(parts) > 6 and parts[6] and parts[6] != 'N/A' else None,  # nvidia-smi returns watts directly
+                            'power_limit': float(parts[7]) if len(parts) > 7 and parts[7] and parts[7] != 'N/A' else None,  # nvidia-smi returns watts directly
+                        }
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            pass
+    except Exception as e:
+        print(f"Error checking GPU: {e}")
 
     return gpu_info
+
+def get_temperature_info():
+    """Get temperature sensor information."""
+    temps = []
+
+    try:
+        # Get temperature sensors using psutil
+        if hasattr(psutil, 'sensors_temperatures'):
+            temp_sensors = psutil.sensors_temperatures()
+
+            # Process each sensor type
+            for sensor_type, sensors in temp_sensors.items():
+                for sensor in sensors:
+                    # Filter out sensors with invalid readings
+                    if sensor.current is not None and sensor.current > 0:
+                        temp_info = {
+                            'type': sensor_type,
+                            'label': sensor.label or sensor_type,
+                            'current': sensor.current,
+                            'high': sensor.high,
+                            'critical': sensor.critical
+                        }
+                        temps.append(temp_info)
+    except Exception as e:
+        print(f"Error getting temperature sensors: {e}")
+
+    # If psutil doesn't provide temps, try alternative methods
+    if not temps:
+        # Try reading from thermal zones (Linux)
+        try:
+            import glob
+            thermal_zones = glob.glob('/sys/class/thermal/thermal_zone*/temp')
+            for i, zone_path in enumerate(thermal_zones):
+                try:
+                    with open(zone_path, 'r') as f:
+                        temp_millidegree = int(f.read().strip())
+                        temp_celsius = temp_millidegree / 1000.0
+
+                        # Try to get the type
+                        type_path = zone_path.replace('/temp', '/type')
+                        sensor_type = f"thermal_zone{i}"
+                        try:
+                            with open(type_path, 'r') as f:
+                                sensor_type = f.read().strip()
+                        except:
+                            pass
+
+                        temps.append({
+                            'type': 'thermal',
+                            'label': sensor_type,
+                            'current': temp_celsius,
+                            'high': 85.0,  # Default high threshold
+                            'critical': 95.0  # Default critical threshold
+                        })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # Try to get NVIDIA GPU temperature (only if nvitop isn't available)
+    try:
+        import nvitop
+        # If nvitop is available, GPU temps are handled in check_gpu()
+        # so we skip adding them here to avoid duplication
+    except ImportError:
+        # nvitop not available, try nvidia-smi
+        try:
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, timeout=2
+            )
+            if result.returncode == 0:
+                gpu_temps = result.stdout.strip().split('\n')
+                for i, temp in enumerate(gpu_temps):
+                    if temp:
+                        temps.append({
+                            'type': 'gpu',
+                            'label': f'NVIDIA GPU {i}',
+                            'current': float(temp),
+                            'high': 80.0,
+                            'critical': 90.0
+                        })
+        except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
+            pass
+
+    return temps
 
 def format_bytes(bytes_value):
     """Format bytes to human readable string."""
@@ -363,6 +548,28 @@ def get_progress_color(percent):
         return progress_colors.warning
     else:
         return progress_colors.error
+
+def get_temperature_color(temp_celsius, high=85, critical=95):
+    """Get color for temperature display."""
+    if temp_celsius < 50:
+        return text_dui.success
+    elif temp_celsius < 70:
+        return text_dui.primary
+    elif temp_celsius < high:
+        return text_dui.warning
+    else:
+        return text_dui.error
+
+def get_temperature_badge_color(temp_celsius, high=85, critical=95):
+    """Get badge color for temperature."""
+    if temp_celsius < 50:
+        return badge_colors.success
+    elif temp_celsius < 70:
+        return badge_colors.primary
+    elif temp_celsius < high:
+        return badge_colors.warning
+    else:
+        return badge_colors.error
 
 def render_stat_card(title_text, value_text, desc_text=None, value_color=None):
     """Render a stat card with consistent styling."""
@@ -795,20 +1002,89 @@ def render_gpu_card(gpu_info):
             *[Div(
                 P(details['name'], cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
 
-                # GPU Utilization
+                # Main metrics in grid
                 Div(
-                    P("Utilization", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
-                    render_progress_bar(details['utilization']),
-                    cls=str(m.b(3))
-                ),
-
-                # GPU Memory
-                Div(
-                    P("Memory", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
-                    render_progress_bar(
-                        (details['memory_used'] / details['memory_total']) * 100,
-                        label=f"{details['memory_used']} MB / {details['memory_total']} MB"
+                    # GPU Utilization
+                    Div(
+                        P("GPU Utilization", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        render_progress_bar(details['utilization']),
+                        cls=str(m.b(3))
                     ),
+
+                    # GPU Memory
+                    Div(
+                        P("Memory", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        render_progress_bar(
+                            (details['memory_used'] / details['memory_total']) * 100 if details['memory_total'] > 0 else 0,
+                            label=f"{details['memory_used']} MB / {details['memory_total']} MB"
+                        ),
+                        cls=str(m.b(3))
+                    ),
+
+                    # Temperature (if available)
+                    Div(
+                        P("Temperature", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        Div(
+                            Span(
+                                f"{details.get('temperature', 'N/A')}°C" if details.get('temperature') else "N/A",
+                                cls=combine_classes(
+                                    font_weight.medium,
+                                    get_temperature_color(details.get('temperature', 0), 80, 90) if details.get('temperature') else text_dui.base_content
+                                )
+                            ),
+                            cls=str(m.t(1))
+                        ),
+                        cls=str(m.b(3))
+                    ) if details.get('temperature') is not None else None,
+
+                    # Power Usage (if available)
+                    Div(
+                        P("Power", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        Div(
+                            Span(
+                                f"{details.get('power_usage', 0):.1f}W / {details.get('power_limit', 0):.1f}W"
+                                if details.get('power_usage') is not None else "N/A",
+                                cls=combine_classes(font_size.sm, text_dui.base_content)
+                            ),
+                            render_progress_bar(
+                                (details.get('power_usage', 0) / details.get('power_limit', 1)) * 100
+                                if details.get('power_limit') and details.get('power_limit') > 0 else 0,
+                                label=None
+                            ) if details.get('power_usage') is not None and details.get('power_limit') else None,
+                            cls=""
+                        ),
+                        cls=str(m.b(3))
+                    ) if details.get('power_usage') is not None else None,
+
+                    # Additional metrics in a row
+                    Div(
+                        # Fan Speed
+                        Span(
+                            f"Fan: {details.get('fan_speed', 'N/A')}%" if details.get('fan_speed') is not None else "",
+                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))
+                        ) if details.get('fan_speed') is not None else None,
+
+                        # Encoder/Decoder utilization
+                        Span(
+                            f"Enc: {details.get('encoder_utilization', 0)}%",
+                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.l(3))
+                        ) if details.get('encoder_utilization') is not None else None,
+
+                        Span(
+                            f"Dec: {details.get('decoder_utilization', 0)}%",
+                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.l(3))
+                        ) if details.get('decoder_utilization') is not None else None,
+
+                        # Process count
+                        Span(
+                            f"Processes: {details.get('compute_processes', 0)}",
+                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.l(3))
+                        ) if details.get('compute_processes') is not None else None,
+
+                        cls=combine_classes(flex_display, items.center)
+                    ) if any([details.get('fan_speed'), details.get('encoder_utilization'),
+                             details.get('decoder_utilization'), details.get('compute_processes')]) else None,
+
                     cls=""
                 ),
 
@@ -817,8 +1093,171 @@ def render_gpu_card(gpu_info):
             cls=""
         ),
 
+        # GPU Processes section (if any)
+        Div(
+            Div(cls=combine_classes(divider, m.y(3))),
+            P("GPU Processes", cls=combine_classes(font_size.sm, font_weight.semibold, m.b(3), text_dui.base_content)),
+
+            # Process table
+            Div(
+                Table(
+                    Thead(
+                        Tr(
+                            Th("PID", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
+                            Th("Process", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
+                            Th("GPU Memory", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
+                            Th("GPU Usage", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
+                            Th("Device", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
+                        )
+                    ),
+                    Tbody(
+                        *[Tr(
+                            Td(str(proc['pid']), cls=combine_classes(font_size.xs, text_dui.base_content.opacity(80))),
+                            Td(
+                                proc['name'][:40] + "..." if len(proc['name']) > 40 else proc['name'],
+                                cls=combine_classes(font_size.xs, font_weight.medium)
+                            ),
+                            Td(
+                                Span(
+                                    f"{proc['gpu_memory_mb']} MB",
+                                    cls=combine_classes(
+                                        badge,
+                                        badge_colors.primary if proc['gpu_memory_mb'] < 4096 else badge_colors.warning if proc['gpu_memory_mb'] < 8192 else badge_colors.error,
+                                        badge_sizes.xs
+                                    )
+                                ),
+                                cls=""
+                            ),
+                            Td(
+                                f"{proc.get('gpu_utilization', 0)}%",
+                                cls=combine_classes(
+                                    font_size.xs,
+                                    text_dui.success if proc.get('gpu_utilization', 0) < 50 else text_dui.warning if proc.get('gpu_utilization', 0) < 80 else text_dui.error
+                                )
+                            ),
+                            Td(
+                                f"GPU {proc['device_id']}",
+                                cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))
+                            ),
+                        ) for proc in sorted(gpu_info.get('processes', []), key=lambda x: x['gpu_memory_mb'], reverse=True)[:10]],  # Show top 10
+                        cls=""
+                    ),
+                    cls=combine_classes(table, table_sizes.xs, w.full)
+                ),
+                cls=combine_classes("overflow-x-auto", bg_dui.base_200, rounded.lg, p(2))
+            ) if gpu_info.get('processes') else Div(
+                P("No active GPU processes", cls=combine_classes(font_size.sm, text_dui.base_content.opacity(50), text_align.center, p(4))),
+                cls=combine_classes(bg_dui.base_200, rounded.lg)
+            ),
+            cls=""
+        ) if gpu_info.get('processes') is not None else None,
+
         cls=str(card_body),
         id="gpu-card-body"
+    )
+
+def render_temperature_card(temp_info):
+    """Render the temperature sensors card."""
+    if not temp_info:
+        return Div(
+            Div(
+                H3("Temperature Sensors", cls=combine_classes(card_title, text_dui.base_content)),
+                cls=str(m.b(4))
+            ),
+            Div(
+                "No temperature sensors detected",
+                cls=combine_classes(alert, alert_colors.info)
+            ),
+            cls=str(card_body)
+        )
+
+    # Group temperatures by type
+    grouped_temps = {}
+    for temp in temp_info:
+        temp_type = temp['type']
+        if temp_type not in grouped_temps:
+            grouped_temps[temp_type] = []
+        grouped_temps[temp_type].append(temp)
+
+    # Find the highest temperature for the header badge
+    max_temp = max((t['current'] for t in temp_info), default=0)
+
+    return Div(
+        Div(
+            H3("Temperature Sensors", cls=combine_classes(card_title, text_dui.base_content)),
+            Span(
+                f"{max_temp:.1f}°C",
+                cls=combine_classes(
+                    badge,
+                    get_temperature_badge_color(max_temp),
+                    badge_sizes.lg
+                )
+            ),
+            cls=combine_classes(flex_display, justify.between, items.center, m.b(4))
+        ),
+
+        Div(
+            *[Div(
+                # Sensor type header
+                P(temp_type.replace('_', ' ').title(),
+                  cls=combine_classes(font_size.sm, font_weight.semibold, m.b(2), text_dui.base_content)),
+
+                # Individual sensors
+                Div(
+                    *[Div(
+                        Div(
+                            Span(sensor['label'], cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                            Div(
+                                Span(
+                                    f"{sensor['current']:.1f}°C",
+                                    cls=combine_classes(
+                                        font_weight.medium,
+                                        get_temperature_color(
+                                            sensor['current'],
+                                            sensor['high'] or 85,
+                                            sensor['critical'] or 95
+                                        )
+                                    )
+                                ),
+                                Span(
+                                    f"H: {sensor['high']:.0f}°C" if sensor['high'] else "",
+                                    cls=combine_classes(font_size.xs, text_dui.base_content.opacity(50), m.l(2))
+                                ) if sensor['high'] else None,
+                                Span(
+                                    f"C: {sensor['critical']:.0f}°C" if sensor['critical'] else "",
+                                    cls=combine_classes(font_size.xs, text_dui.error.opacity(50), m.l(2))
+                                ) if sensor['critical'] else None,
+                                cls=combine_classes(flex_display, items.center)
+                            ),
+                            cls=combine_classes(flex_display, justify.between, items.center)
+                        ),
+
+                        # Temperature bar visualization
+                        Div(
+                            Div(
+                                cls=combine_classes(
+                                    h(2),
+                                    rounded.full,
+                                    bg_dui.base_300,
+                                    "relative",
+                                    "overflow-hidden"
+                                ),
+                                style=f"background: linear-gradient(to right, {self._get_temp_gradient(sensor['current'], sensor['high'] or 85, sensor['critical'] or 95)})"
+                            ) if False else None,  # Disabled gradient for now, using color text instead
+                            cls=str(m.t(1))
+                        ) if False else None,
+
+                        cls=combine_classes(p(2), bg_dui.base_200, rounded.md, m.b(2))
+                    ) for sensor in sensors],
+                    cls=""
+                ),
+                cls=str(m.b(3))
+            ) for temp_type, sensors in grouped_temps.items()],
+            cls=""
+        ),
+
+        cls=str(card_body),
+        id="temperature-card-body"
     )
 
 @rt('/')
@@ -831,6 +1270,7 @@ def get():
     net_info = get_network_info()
     proc_info = get_process_info()
     gpu_info = check_gpu()
+    temp_info = get_temperature_info()
 
     return Div(
         # Navbar with improved styling
@@ -926,6 +1366,13 @@ def get():
                     id="gpu-card"
                 ),
 
+                # Temperature Sensors Card
+                Div(
+                    render_temperature_card(temp_info),
+                    cls=combine_classes(card, bg_dui.base_100, shadow.md),
+                    id="temperature-card"
+                ),
+
                 cls=combine_classes(grid_display, grid_cols(1).md, grid_cols(2).lg, grid_cols(3).xl, gap(6))
             ),
 
@@ -953,6 +1400,7 @@ async def stream_updates():
                 disk_info = get_disk_info()
                 net_info = get_network_info()
                 gpu_info = check_gpu()
+                temp_info = get_temperature_info()
 
                 # Create OOB swap elements for each card
                 updates = []
@@ -1000,6 +1448,14 @@ async def stream_updates():
                     updates.append(oob_swap(
                         render_gpu_card(gpu_info),
                         target_id="gpu-card-body",
+                        swap_type="outerHTML"
+                    ))
+
+                # Update Temperature card (every 5 seconds)
+                if int(time.time()) % 5 == 0:
+                    updates.append(oob_swap(
+                        render_temperature_card(temp_info),
+                        target_id="temperature-card-body",
                         swap_type="outerHTML"
                     ))
 
