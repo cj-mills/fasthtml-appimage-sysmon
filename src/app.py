@@ -32,12 +32,15 @@ from cjm_fasthtml_sse.helpers import (
 from cjm_fasthtml_sse.htmx import HTMXSSEConnector
 
 # DaisyUI imports
-from cjm_fasthtml_daisyui.components.actions.button import btn, btn_colors, btn_sizes, btn_styles
+from cjm_fasthtml_daisyui.components.actions.button import btn, btn_colors, btn_sizes, btn_styles, btn_modifiers
+from cjm_fasthtml_daisyui.components.actions.modal import modal, modal_box, modal_action, modal_backdrop
 from cjm_fasthtml_daisyui.components.data_display.card import card, card_body, card_title, card_actions
 from cjm_fasthtml_daisyui.components.data_display.badge import badge, badge_colors, badge_sizes
 from cjm_fasthtml_daisyui.components.data_display.stat import stat, stat_title, stat_value, stat_desc, stats, stats_direction
 from cjm_fasthtml_daisyui.components.data_display.status import status, status_colors, status_sizes
 from cjm_fasthtml_daisyui.components.data_display.table import table, table_modifiers, table_sizes
+from cjm_fasthtml_daisyui.components.data_input.range_slider import range_dui, range_colors, range_sizes
+from cjm_fasthtml_daisyui.components.data_input.label import label
 from cjm_fasthtml_daisyui.components.navigation.tabs import tabs, tab, tab_modifiers, tabs_styles
 from cjm_fasthtml_daisyui.components.feedback.progress import progress, progress_colors
 from cjm_fasthtml_daisyui.components.feedback.alert import alert, alert_colors
@@ -54,6 +57,7 @@ from cjm_fasthtml_tailwind.utilities.sizing import w, h, max_w, min_h, min_w
 from cjm_fasthtml_tailwind.utilities.typography import font_size, font_weight, text_align, font_family, break_all, leading
 from cjm_fasthtml_tailwind.utilities.borders import rounded, border, border_color
 from cjm_fasthtml_tailwind.utilities.effects import shadow
+from cjm_fasthtml_tailwind.utilities.layout import position, right, top
 from cjm_fasthtml_tailwind.core.base import combine_classes
 
 # Find an available port
@@ -96,6 +100,28 @@ app, rt = fast_app(
 insert_htmx_sse_ext(app.hdrs)
 
 MAX_CPU_CORES = 32
+
+# Refresh intervals configuration (in seconds)
+REFRESH_INTERVALS = {
+    'cpu': 2,
+    'memory': 2,
+    'disk': 10,
+    'network': 2,
+    'process': 5,
+    'gpu': 3,
+    'temperature': 5
+}
+
+# Track last update times for each component
+LAST_UPDATE_TIMES = {
+    'cpu': 0,
+    'memory': 0,
+    'disk': 0,
+    'network': 0,
+    'process': 0,
+    'gpu': 0,
+    'temperature': 0
+}
 
 # Cache for system info that doesn't change
 STATIC_SYSTEM_INFO = {}
@@ -781,8 +807,8 @@ def render_network_card(net_info):
                 # Bandwidth meters
                 Div(
                     # Upload speed
-                    Div(
-                        Div(
+                    Label(
+                        Label(
                             Span("↑ Upload", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
                             Span(format_bandwidth(interface['bytes_sent_per_sec']),
                                  cls=combine_classes(font_size.xs, text_dui.info, font_weight.medium)),
@@ -797,8 +823,8 @@ def render_network_card(net_info):
                     ),
 
                     # Download speed
-                    Div(
-                        Div(
+                    Label(
+                        Label(
                             Span("↓ Download", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
                             Span(format_bandwidth(interface['bytes_recv_per_sec']),
                                  cls=combine_classes(font_size.xs, text_dui.success, font_weight.medium)),
@@ -813,7 +839,7 @@ def render_network_card(net_info):
                     ),
 
                     # Statistics
-                    Div(
+                    Label(
                         Span(f"Total: ↑{format_bytes(interface['bytes_sent'])} ↓{format_bytes(interface['bytes_recv'])}",
                              cls=combine_classes(font_size.xs, text_dui.base_content.opacity(50))),
                         cls=str(m.t(1))
@@ -907,7 +933,7 @@ def render_process_card(proc_info):
                             cls=combine_classes(font_size.xs, font_weight.medium)
                         ),
                         Td(
-                            Div(
+                            Label(
                                 f"{proc['cpu_percent']:.1f}%",
                                 cls=combine_classes(
                                     badge,
@@ -948,7 +974,7 @@ def render_process_card(proc_info):
                             cls=combine_classes(font_size.xs, font_weight.medium)
                         ),
                         Td(
-                            Div(
+                            Label(
                                 f"{proc['memory_percent']:.1f}%",
                                 cls=combine_classes(
                                     badge,
@@ -1005,14 +1031,14 @@ def render_gpu_card(gpu_info):
                 # Main metrics in grid
                 Div(
                     # GPU Utilization
-                    Div(
+                    Label(
                         P("GPU Utilization", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
                         render_progress_bar(details['utilization']),
                         cls=str(m.b(3))
                     ),
 
                     # GPU Memory
-                    Div(
+                    Label(
                         P("Memory", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
                         render_progress_bar(
                             (details['memory_used'] / details['memory_total']) * 100 if details['memory_total'] > 0 else 0,
@@ -1022,9 +1048,9 @@ def render_gpu_card(gpu_info):
                     ),
 
                     # Temperature (if available)
-                    Div(
+                    Label(
                         P("Temperature", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
-                        Div(
+                        Label(
                             Span(
                                 f"{details.get('temperature', 'N/A')}°C" if details.get('temperature') else "N/A",
                                 cls=combine_classes(
@@ -1038,9 +1064,9 @@ def render_gpu_card(gpu_info):
                     ) if details.get('temperature') is not None else None,
 
                     # Power Usage (if available)
-                    Div(
+                    Label(
                         P("Power", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
-                        Div(
+                        Label(
                             Span(
                                 f"{details.get('power_usage', 0):.1f}W / {details.get('power_limit', 0):.1f}W"
                                 if details.get('power_usage') is not None else "N/A",
@@ -1057,7 +1083,7 @@ def render_gpu_card(gpu_info):
                     ) if details.get('power_usage') is not None else None,
 
                     # Additional metrics in a row
-                    Div(
+                    Label(
                         # Fan Speed
                         Span(
                             f"Fan: {details.get('fan_speed', 'N/A')}%" if details.get('fan_speed') is not None else "",
@@ -1205,9 +1231,9 @@ def render_temperature_card(temp_info):
                 # Individual sensors
                 Div(
                     *[Div(
-                        Div(
+                        Label(
                             Span(sensor['label'], cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
-                            Div(
+                            Label(
                                 Span(
                                     f"{sensor['current']:.1f}°C",
                                     cls=combine_classes(
@@ -1233,8 +1259,8 @@ def render_temperature_card(temp_info):
                         ),
 
                         # Temperature bar visualization
-                        Div(
-                            Div(
+                        Label(
+                            Label(
                                 cls=combine_classes(
                                     h(2),
                                     rounded.full,
@@ -1260,6 +1286,197 @@ def render_temperature_card(temp_info):
         id="temperature-card-body"
     )
 
+def render_settings_modal():
+    """Render the settings modal for configuring refresh intervals."""
+    return Dialog(
+        Div(
+            # Close button at corner
+            Form(
+                Button(
+                    "✕",
+                    cls=combine_classes(
+                        btn,
+                        btn_sizes.sm,
+                        btn_modifiers.circle,
+                        btn_styles.ghost,
+                        position.absolute,
+                        right._2,
+                        top._2
+                    )
+                ),
+                method="dialog"
+            ),
+            H3("Refresh Interval Settings", cls=combine_classes(font_size.lg, font_weight.bold, m.b(4))),
+            P("Adjust the refresh intervals for each component (in seconds)",
+              cls=combine_classes(text_dui.base_content.opacity(70), font_size.sm, m.b(6))),
+
+            # Settings form
+            Div(
+                # CPU interval
+                Div(
+                    Label(
+                        Span("CPU", cls=combine_classes(font_weight.medium)),
+                        Span(f"{REFRESH_INTERVALS['cpu']}s", id="cpu-interval-value",
+                             cls=combine_classes(text_dui.primary, font_weight.medium)),
+                        cls=combine_classes(label, flex_display, justify.between, m.b(2))
+                    ),
+                    Input(
+                        type="range",
+                        min="1",
+                        max="30",
+                        value=str(REFRESH_INTERVALS['cpu']),
+                        id="cpu-interval",
+                        cls=combine_classes(range_dui, range_colors.primary, w.full),
+                        oninput="document.getElementById('cpu-interval-value').textContent = this.value + 's'"
+                    ),
+                    cls=str(m.b(4))
+                ),
+
+                # Memory interval
+                Div(
+                    Label(
+                        Span("Memory", cls=combine_classes(font_weight.medium)),
+                        Span(f"{REFRESH_INTERVALS['memory']}s", id="memory-interval-value",
+                             cls=combine_classes(text_dui.primary, font_weight.medium)),
+                        cls=combine_classes(label, flex_display, justify.between, m.b(2))
+                    ),
+                    Input(
+                        type="range",
+                        min="1",
+                        max="30",
+                        value=str(REFRESH_INTERVALS['memory']),
+                        id="memory-interval",
+                        cls=combine_classes(range_dui, range_colors.primary, w.full),
+                        oninput="document.getElementById('memory-interval-value').textContent = this.value + 's'"
+                    ),
+                    cls=str(m.b(4))
+                ),
+
+                # Disk interval
+                Div(
+                    Label(
+                        Span("Disk", cls=combine_classes(font_weight.medium)),
+                        Span(f"{REFRESH_INTERVALS['disk']}s", id="disk-interval-value",
+                             cls=combine_classes(text_dui.primary, font_weight.medium)),
+                        cls=combine_classes(label, flex_display, justify.between, m.b(2))
+                    ),
+                    Input(
+                        type="range",
+                        min="5",
+                        max="60",
+                        value=str(REFRESH_INTERVALS['disk']),
+                        id="disk-interval",
+                        cls=combine_classes(range_dui, range_colors.primary, w.full),
+                        oninput="document.getElementById('disk-interval-value').textContent = this.value + 's'"
+                    ),
+                    cls=str(m.b(4))
+                ),
+
+                # Network interval
+                Div(
+                    Label(
+                        Span("Network", cls=combine_classes(font_weight.medium)),
+                        Span(f"{REFRESH_INTERVALS['network']}s", id="network-interval-value",
+                             cls=combine_classes(text_dui.primary, font_weight.medium)),
+                        cls=combine_classes(label, flex_display, justify.between, m.b(2))
+                    ),
+                    Input(
+                        type="range",
+                        min="1",
+                        max="30",
+                        value=str(REFRESH_INTERVALS['network']),
+                        id="network-interval",
+                        cls=combine_classes(range_dui, range_colors.primary, w.full),
+                        oninput="document.getElementById('network-interval-value').textContent = this.value + 's'"
+                    ),
+                    cls=str(m.b(4))
+                ),
+
+                # Process interval
+                Div(
+                    Label(
+                        Span("Processes", cls=combine_classes(font_weight.medium)),
+                        Span(f"{REFRESH_INTERVALS['process']}s", id="process-interval-value",
+                             cls=combine_classes(text_dui.primary, font_weight.medium)),
+                        cls=combine_classes(label, flex_display, justify.between, m.b(2))
+                    ),
+                    Input(
+                        type="range",
+                        min="2",
+                        max="60",
+                        value=str(REFRESH_INTERVALS['process']),
+                        id="process-interval",
+                        cls=combine_classes(range_dui, range_colors.primary, w.full),
+                        oninput="document.getElementById('process-interval-value').textContent = this.value + 's'"
+                    ),
+                    cls=str(m.b(4))
+                ),
+
+                # GPU interval
+                Div(
+                    Label(
+                        Span("GPU", cls=combine_classes(font_weight.medium)),
+                        Span(f"{REFRESH_INTERVALS['gpu']}s", id="gpu-interval-value",
+                             cls=combine_classes(text_dui.primary, font_weight.medium)),
+                        cls=combine_classes(label, flex_display, justify.between, m.b(2))
+                    ),
+                    Input(
+                        type="range",
+                        min="1",
+                        max="30",
+                        value=str(REFRESH_INTERVALS['gpu']),
+                        id="gpu-interval",
+                        cls=combine_classes(range_dui, range_colors.primary, w.full),
+                        oninput="document.getElementById('gpu-interval-value').textContent = this.value + 's'"
+                    ),
+                    cls=str(m.b(4))
+                ),
+
+                # Temperature interval
+                Div(
+                    Label(
+                        Span("Temperature", cls=combine_classes(font_weight.medium)),
+                        Span(f"{REFRESH_INTERVALS['temperature']}s", id="temperature-interval-value",
+                             cls=combine_classes(text_dui.primary, font_weight.medium)),
+                        cls=combine_classes(label, flex_display, justify.between, m.b(2))
+                    ),
+                    Input(
+                        type="range",
+                        min="2",
+                        max="60",
+                        value=str(REFRESH_INTERVALS['temperature']),
+                        id="temperature-interval",
+                        cls=combine_classes(range_dui, range_colors.primary, w.full),
+                        oninput="document.getElementById('temperature-interval-value').textContent = this.value + 's'"
+                    ),
+                    cls=str(m.b(4))
+                ),
+                cls=str(m.b(6))
+            ),
+
+            # Action buttons
+            Div(
+                Button(
+                    "Apply",
+                    cls=combine_classes(btn, btn_colors.primary),
+                    onclick="updateRefreshIntervals()",
+                    hx_post="/update_intervals",
+                    hx_vals="js:{cpu: document.getElementById('cpu-interval').value, memory: document.getElementById('memory-interval').value, disk: document.getElementById('disk-interval').value, network: document.getElementById('network-interval').value, process: document.getElementById('process-interval').value, gpu: document.getElementById('gpu-interval').value, temperature: document.getElementById('temperature-interval').value}",
+                    hx_swap="none"
+                ),
+                Form(
+                    Button("Cancel", cls=combine_classes(btn, btn_styles.ghost)),
+                    method="dialog",
+                    cls="inline"
+                ),
+                cls=combine_classes(modal_action, gap(2))
+            ),
+            cls=combine_classes(modal_box, w("11/12"), max_w._2xl)
+        ),
+        id="settings_modal",
+        cls=str(modal)
+    )
+
 @rt('/')
 def get():
     # Get initial system information
@@ -1283,11 +1500,17 @@ def get():
                 ),
                 Div(
                     # Connection status indicator
-                    Div(
+                    Label(
                         Span(cls=combine_classes(status, status_colors.success, status_sizes.sm, m.r(2))),
                         Span("Live", cls=combine_classes(text_dui.success, font_size.sm)),
                         id="connection-status",
                         cls=combine_classes(flex_display, items.center)
+                    ),
+                    # Settings button
+                    Button(
+                        "⚙ Settings",
+                        cls=combine_classes(btn, btn_sizes.sm, btn_styles.ghost),
+                        onclick="settings_modal.showModal()"
                     ),
                     create_theme_selector(),
                     cls=combine_classes(flex_display, justify.end, items.center, gap(4), navbar_end)
@@ -1385,8 +1608,30 @@ def get():
 
             cls=combine_classes(p(6), max_w.screen_2xl, m.auto)
         ),
+
+        # Settings Modal
+        render_settings_modal(),
+
         cls=combine_classes(min_h.screen, bg_dui.base_200)
     )
+
+@rt('/update_intervals', methods=['POST'])
+async def update_intervals(cpu: int, memory: int, disk: int, network: int, process: int, gpu: int, temperature: int):
+    """Update the refresh intervals for each component."""
+    global REFRESH_INTERVALS
+    REFRESH_INTERVALS['cpu'] = int(cpu)
+    REFRESH_INTERVALS['memory'] = int(memory)
+    REFRESH_INTERVALS['disk'] = int(disk)
+    REFRESH_INTERVALS['network'] = int(network)
+    REFRESH_INTERVALS['process'] = int(process)
+    REFRESH_INTERVALS['gpu'] = int(gpu)
+    REFRESH_INTERVALS['temperature'] = int(temperature)
+
+    # Reset last update times to apply changes immediately
+    for key in LAST_UPDATE_TIMES:
+        LAST_UPDATE_TIMES[key] = 0
+
+    return ""  # Empty response for HTMX
 
 @rt('/stream_updates')
 async def stream_updates():
@@ -1394,84 +1639,96 @@ async def stream_updates():
     async def update_stream():
         try:
             while True:
-                # Get current system stats
-                cpu_info = get_cpu_info()
-                mem_info = get_memory_info()
-                disk_info = get_disk_info()
-                net_info = get_network_info()
-                gpu_info = check_gpu()
-                temp_info = get_temperature_info()
-
-                # Create OOB swap elements for each card
+                current_time = time.time()
                 updates = []
 
-                # Update CPU card
-                updates.append(oob_swap(
-                    render_cpu_card(cpu_info),
-                    target_id="cpu-card-body",
-                    swap_type="outerHTML"
-                ))
+                # Check and update CPU if interval has passed
+                if current_time - LAST_UPDATE_TIMES['cpu'] >= REFRESH_INTERVALS['cpu']:
+                    cpu_info = get_cpu_info()
+                    updates.append(oob_swap(
+                        render_cpu_card(cpu_info),
+                        target_id="cpu-card-body",
+                        swap_type="outerHTML"
+                    ))
+                    LAST_UPDATE_TIMES['cpu'] = current_time
 
-                # Update Memory card
-                updates.append(oob_swap(
-                    render_memory_card(mem_info),
-                    target_id="memory-card-body",
-                    swap_type="outerHTML"
-                ))
+                # Check and update Memory if interval has passed
+                if current_time - LAST_UPDATE_TIMES['memory'] >= REFRESH_INTERVALS['memory']:
+                    mem_info = get_memory_info()
+                    updates.append(oob_swap(
+                        render_memory_card(mem_info),
+                        target_id="memory-card-body",
+                        swap_type="outerHTML"
+                    ))
+                    LAST_UPDATE_TIMES['memory'] = current_time
 
-                # Update Disk card (less frequent updates needed)
-                if int(time.time()) % 10 == 0:  # Every 10 seconds
+                # Check and update Disk if interval has passed
+                if current_time - LAST_UPDATE_TIMES['disk'] >= REFRESH_INTERVALS['disk']:
+                    disk_info = get_disk_info()
                     updates.append(oob_swap(
                         render_disk_card(disk_info),
                         target_id="disk-card-body",
                         swap_type="outerHTML"
                     ))
+                    LAST_UPDATE_TIMES['disk'] = current_time
 
-                # Update Network card
-                updates.append(oob_swap(
-                    render_network_card(net_info),
-                    target_id="network-card-body",
-                    swap_type="outerHTML"
-                ))
+                # Check and update Network if interval has passed
+                if current_time - LAST_UPDATE_TIMES['network'] >= REFRESH_INTERVALS['network']:
+                    net_info = get_network_info()
+                    updates.append(oob_swap(
+                        render_network_card(net_info),
+                        target_id="network-card-body",
+                        swap_type="outerHTML"
+                    ))
+                    LAST_UPDATE_TIMES['network'] = current_time
 
-                # Update Process card (every 5 seconds to reduce CPU overhead)
-                if int(time.time()) % 5 == 0:
+                # Check and update Process if interval has passed
+                if current_time - LAST_UPDATE_TIMES['process'] >= REFRESH_INTERVALS['process']:
                     proc_info = get_process_info()
                     updates.append(oob_swap(
                         render_process_card(proc_info),
                         target_id="process-card-body",
                         swap_type="outerHTML"
                     ))
+                    LAST_UPDATE_TIMES['process'] = current_time
 
-                # Update GPU card if available
-                if gpu_info['available']:
-                    updates.append(oob_swap(
-                        render_gpu_card(gpu_info),
-                        target_id="gpu-card-body",
-                        swap_type="outerHTML"
-                    ))
+                # Check and update GPU if interval has passed and available
+                if current_time - LAST_UPDATE_TIMES['gpu'] >= REFRESH_INTERVALS['gpu']:
+                    gpu_info = check_gpu()
+                    if gpu_info['available']:
+                        updates.append(oob_swap(
+                            render_gpu_card(gpu_info),
+                            target_id="gpu-card-body",
+                            swap_type="outerHTML"
+                        ))
+                    LAST_UPDATE_TIMES['gpu'] = current_time
 
-                # Update Temperature card (every 5 seconds)
-                if int(time.time()) % 5 == 0:
+                # Check and update Temperature if interval has passed
+                if current_time - LAST_UPDATE_TIMES['temperature'] >= REFRESH_INTERVALS['temperature']:
+                    temp_info = get_temperature_info()
                     updates.append(oob_swap(
                         render_temperature_card(temp_info),
                         target_id="temperature-card-body",
                         swap_type="outerHTML"
                     ))
+                    LAST_UPDATE_TIMES['temperature'] = current_time
 
-                # Update timestamp
-                updates.append(oob_swap(
-                    P(f"Monitoring {get_static_system_info()['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                      cls=combine_classes(text_dui.base_content.opacity(60), font_size.sm)),
-                    target_id="timestamp",
-                    swap_type="innerHTML"
-                ))
+                # Always update timestamp
+                if updates:  # Only add timestamp if there are other updates
+                    updates.append(oob_swap(
+                        P(f"Monitoring {get_static_system_info()['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                          cls=combine_classes(text_dui.base_content.opacity(60), font_size.sm)),
+                        target_id="timestamp",
+                        swap_type="innerHTML"
+                    ))
 
-                # Send all updates
-                yield sse_message(Div(*updates))
+                # Send updates only if there are any
+                if updates:
+                    yield sse_message(Div(*updates))
 
-                # Wait before next update
-                await asyncio.sleep(2)  # Update every 2 seconds
+                # Wait before next check - use minimum interval for responsiveness
+                min_interval = min(REFRESH_INTERVALS.values())
+                await asyncio.sleep(min(1, min_interval))  # At least 1 second
 
         except Exception as e:
             print(f"Error in update stream: {e}")
