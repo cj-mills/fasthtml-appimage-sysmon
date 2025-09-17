@@ -1,29 +1,121 @@
-# FastHTML AppImage with daisyUI
+# System Monitor Dashboard - FastHTML AppImage
 
-This example demonstrates how to package a FastHTML application as a portable Linux AppImage using micromamba for Python environment management. Uses daisyUI for styling.
+A real-time system monitoring dashboard built with FastHTML and packaged as a portable Linux AppImage. Leverages UI components from daisyUI and real-time updates via Server-Sent Events (SSE).
+
+
 
 ## Features
 
-- **Portable**: Single executable file that runs on most Linux distributions
+### System Monitoring Capabilities
+
+- **Operating System Information**
+  - System type, release, and architecture
+  - Hostname and Python version
+  - Boot time and uptime tracking
+  - CPU core counts (physical and logical)
+
+- **CPU Monitoring**
+  - Real-time overall CPU usage percentage
+  - Per-core usage visualization (up to 32 cores)
+  - CPU frequency monitoring (current/min/max)
+  - Dynamic color-coded progress bars
+
+- **Memory Monitoring**
+  - RAM usage with percentage and bytes
+  - Available memory display
+  - Swap memory usage tracking
+  - Visual progress indicators
+
+- **Disk Usage**
+  - Multiple disk/partition support
+  - Device, mountpoint, and filesystem information
+  - Usage percentages with progress bars
+  - Free space indicators
+
+- **Network Monitoring**
+  - Real-time bandwidth monitoring (upload/download speeds)
+  - Network interface details with IP addresses
+  - Packets sent/received statistics
+  - Bandwidth calculation with accurate per-second rates
+
+- **Process Monitoring**
+  - Total process count with status breakdown
+  - Top 5 CPU-consuming processes
+  - Top 5 memory-consuming processes
+  - Detailed process tables with PID and usage percentages
+
+- **GPU Monitoring**
+  - NVIDIA GPU detection and monitoring (via nvitop)
+  - GPU utilization percentage
+  - GPU memory usage tracking
+  - Multi-GPU support
+  - Temperature monitoring
+
+- **Temperature Sensors**
+  - CPU temperature monitoring
+  - GPU temperature (when available)
+  - Disk temperature sensors
+  - Color-coded temperature warnings
+
+### UI/UX Features
+
+- **Real-time Updates**: SSE-based streaming for live data
+- **Configurable Refresh Rates**: Independent update intervals for each component
+- **Theme Support**: Built-in light/dark theme switcher
+- **Responsive Design**: Adaptive grid layout for different screen sizes
+- **Visual Hierarchy**: Clear typography and spacing following Refactoring UI principles
+- **Status Indicators**: Color-coded alerts and progress bars
+- **Settings Modal**: Easy configuration of refresh intervals (1-60 seconds per component)
+
+### Technical Features
+
+- **Portable**: Single AppImage file that runs on most Linux distributions
 - **Self-contained**: Includes Python runtime and all dependencies via micromamba
-- **Browser modes**: Can open in default browser, standalone window, or headless
-- **Environment management**: Uses micromamba for reproducible Python environments
-- **No installation required**: Just download and run
+- **Modular Architecture**: Clean separation of monitoring logic and UI components
+- **Performance Optimized**: Fine-grained updates and efficient DOM manipulation
+- **No Installation Required**: Just download and run
+
+
 
 ## Project Structure
 
 ```
-fasthtml-appimage-daisyui/
-├── build-resources/          # Build resource (used during build)
-│   ├── AppRun                # Entry point script
-│   └── fasthtml-demo.desktop # Desktop entry file
-├── build.sh                  # Build script
-├── environment.yml           # Conda environment specification
-├── README.md                 # This file
-├── requirements.txt          # Python package requirements
-└── src/                      # FastHTML application source
-    └── app.py                # Main FastHTML application
+fasthtml-appimage-sysmon/
+├── build-resources/          # Build resources (used during build)
+│   ├── AppRun               # Entry point script
+│   └── fasthtml-demo.desktop # Desktop entry file
+├── claude-docs/             # Documentation for Claude AI integration
+├── src/                     # Application source code
+│   ├── app.py              # Main FastHTML application
+│   ├── config.py           # Configuration and constants
+│   ├── utils.py            # Utility functions
+│   ├── routes.py           # Route definitions
+│   ├── monitors/           # System monitoring modules
+│   │   ├── __init__.py
+│   │   ├── cpu.py         # CPU monitoring functions
+│   │   ├── disk.py        # Disk usage monitoring
+│   │   ├── gpu.py         # GPU detection and monitoring
+│   │   ├── memory.py      # Memory monitoring
+│   │   ├── network.py     # Network interface monitoring
+│   │   ├── process.py     # Process monitoring
+│   │   ├── sensors.py     # Temperature sensor monitoring
+│   │   └── system.py      # Static system information
+│   └── components/         # UI components
+│       ├── __init__.py
+│       ├── base.py        # Base component utilities
+│       ├── cards.py       # Card components for each metric
+│       ├── charts.py      # Chart components (future)
+│       ├── common.py      # Common UI elements
+│       ├── layout.py      # Layout components
+│       ├── modals.py      # Modal dialogs (settings)
+│       └── tables.py      # Table components for processes
+├── build.sh                # Build script for AppImage
+├── environment.yml         # Conda environment specification
+├── requirements.txt        # Python package requirements
+└── README.md              # This file
 ```
+
+
 
 ## Prerequisites
 
@@ -36,12 +128,14 @@ To build the AppImage, you need:
 Optional:
 - `ImageMagick` (for icon generation)
 
+
+
 ## Building the AppImage
 
-1. Clone or download this example:
+1. Clone the repository:
 ```bash
-git clone https://github.com/cj-mills/fasthtml-appimage-daisyui.git
-cd ./fasthtml-appimage-daisyui
+git clone https://github.com/cj-mills/fasthtml-appimage-sysmon.git
+cd fasthtml-appimage-sysmon
 ```
 
 2. Run the build script:
@@ -55,19 +149,21 @@ The build script will:
 - Package everything into an AppImage
 - Output: `FastHTMLDemo-1.0.0-x86_64.AppImage`
 
+
+
 ## Running the AppImage
 
 ### Basic usage:
 ```bash
 ./FastHTMLDemo-1.0.0-x86_64.AppImage
 ```
-This opens your FastHTML app in the default browser.
+This opens your System Monitor Dashboard in the default browser.
 
 ### Standalone window mode:
 ```bash
 FASTHTML_BROWSER=app ./FastHTMLDemo-1.0.0-x86_64.AppImage
 ```
-Opens in a chromeless browser window (if Chrome/Chromium is installed).
+Opens in a chromeless browser window (requires Chrome/Chromium).
 
 ### Headless mode:
 ```bash
@@ -96,6 +192,8 @@ Shows detailed debug information.
 ./FastHTMLDemo-1.0.0-x86_64.AppImage --appimage-extract
 ```
 
+
+
 ## Environment Variables
 
 - `FASTHTML_HOST`: Server host (default: 127.0.0.1)
@@ -103,66 +201,67 @@ Shows detailed debug information.
 - `FASTHTML_BROWSER`: Browser mode - `default`, `app`, or `none`
 - `DEBUG`: Enable debug output
 
-## How It Works
 
-1. **AppRun Script**: The entry point that:
-   - Sets up the micromamba environment
-   - Configures Python paths
-   - Launches the FastHTML application
 
-2. **Micromamba**: Provides isolated Python environment:
-   - Bundled inside the AppImage
-   - Contains Python 3.11 and all dependencies
-   - Completely isolated from system Python
+## Dashboard Components
 
-3. **FastHTML Application**: Runs as a local web server:
-   - Auto-finds available port
-   - Opens browser automatically
-   - Serves the web application locally
+### Main Dashboard Features:
+
+1. **System Overview Card**: Static system information including OS details, hostname, and uptime
+2. **CPU Usage Card**: Real-time CPU metrics with per-core visualization
+3. **Memory Usage Card**: RAM and swap usage with progress bars
+4. **Disk Usage Card**: Storage information for all mounted drives
+5. **Network Card**: Interface status and bandwidth monitoring
+6. **Process Card**: Top processes by CPU and memory usage
+7. **GPU Card**: NVIDIA GPU metrics and utilization
+8. **Temperature Card**: Thermal monitoring for CPU, GPU, and disks
+
+### Settings Panel:
+
+- Adjustable refresh intervals for each component (1-60 seconds)
+- Immediate application of settings
+- Persistent configuration during session
+
+
 
 ## Customization
 
 ### Adding Dependencies
 
 1. Edit `environment.yml` for conda packages:
-```yaml
-dependencies:
-  - python=3.11
-  - numpy  # Add conda packages here
-  - pip:
-    - -r requirements.txt
-```
 
-2. Edit `requirements.txt` for pip-only packages:
-```
-python-fasthtml>=0.12.27
-sqlite-minutils>=4.0.3
-cjm-fasthtml-daisyui
-new-package==1.0.0
-```
+   ```text
+   dependencies:
+     - python=3.11
+     - numpy  # Add conda packages here
+     - pip:
+       - -r requirements.txt
+   ```
+2. Edit `requirements.txt` for pip packages:
 
+   ```text
+   python-fasthtml>=0.12.27
+   psutil>=5.9.0
+   nvitop>=1.3.2  # For NVIDIA GPU monitoring
+   cjm-fasthtml-daisyUI
+   cjm-fasthtml-sse
+   ```
 3. Rebuild the AppImage
 
-### Modifying the Application
+### Modifying the Dashboard
 
-1. Edit `src/app.py` with your FastHTML application
-2. Add additional Python files to `src/` as needed
-3. Rebuild the AppImage
+1. **Add new monitoring features**: Create a new module in `src/monitors/`
+2. **Add UI components**: Create components in `src/components/`
+3. **Update main app**: Modify `src/app.py` to include new components
+4. **Rebuild the AppImage**
 
 ### Changing App Metadata
 
-1. Edit `AppDir/fasthtml-demo.desktop` for app name/description
+1. Edit `build-resources/fasthtml-demo.desktop` for app name/description
 2. Replace the icon by providing a PNG file
 3. Update `APP_NAME` and `APP_VERSION` in `build.sh`
 
-## Size Optimization
 
-The AppImage size can be reduced by:
-
-1. **Using pip-only dependencies** (skip conda packages when possible)
-2. **Cleaning build artifacts** (already done in build script)
-3. **Using `--no-deps` for packages** with unnecessary dependencies
-4. **Excluding test files and documentation** from packages
 
 ## Troubleshooting
 
@@ -176,47 +275,18 @@ The AppImage size can be reduced by:
 - Check debug output: `DEBUG=1 ./FastHTMLDemo-*.AppImage`
 - Try rebuilding the AppImage
 
-## Advanced Usage
+### GPU monitoring not working
+- Ensure NVIDIA drivers are installed
+- Check if `nvidia-smi` is accessible
+- Verify nvitop installation in requirements
 
-### Creating Multi-App Bundles
 
-You can modify this example to bundle multiple FastHTML apps:
-
-1. Add multiple apps to `src/`
-2. Modify `AppRun` to accept app selection parameter
-3. Create launcher script or menu for app selection
-
-### Integrating with System
-
-Create a `.desktop` file in `~/.local/share/applications/`:
-```desktop
-[Desktop Entry]
-Type=Application
-Name=My FastHTML App
-Exec=/path/to/FastHTMLDemo-1.0.0-x86_64.AppImage
-Icon=/path/to/icon.png
-Categories=Development;
-```
-
-### CI/CD Integration
-
-The build script can be integrated into CI/CD pipelines:
-```yaml
-# GitHub Actions example
-- name: Build AppImage
-  run: |
-    cd fasthtml-appimage-daisyui
-    ./build.sh
-
-- name: Upload AppImage
-  uses: actions/upload-artifact@v2
-  with:
-    name: appimage
-    path: "*.AppImage"
-```
 
 ## Resources
 
-- [FastHTML Documentation](https://fastht.ml/)
+- [FastHTML Documentation](https://docs.fastht.ml/)
+- [daisyUI Components](https://daisyUI.com/)
 - [AppImage Documentation](https://appimage.org/)
 - [Micromamba Documentation](https://mamba.readthedocs.io/en/latest/user_guide/micromamba.html)
+- [psutil Documentation](https://psutil.readthedocs.io/)
+- [nvitop Documentation](https://github.com/XuehaiPan/nvitop)
