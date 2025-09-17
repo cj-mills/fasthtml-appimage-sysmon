@@ -355,32 +355,124 @@ def render_network_card(net_info):
         id="network-card-body"
     )
 
+def render_process_count(total):
+    """Render just the process count badge."""
+    return Span(
+        f"{total} processes",
+        cls=combine_classes(badge, badge_colors.primary, badge_sizes.lg),
+        id="process-count"
+    )
+
+def render_process_status(status_counts):
+    """Render just the process status badges."""
+    return Div(
+        *[Span(
+            f"{status}: {count}",
+            cls=combine_classes(
+                badge,
+                badge_colors.info if status == 'running' else badge_colors.neutral,
+                badge_sizes.sm,
+                m.r(2)
+            )
+        ) for status, count in status_counts.items()],
+        cls=combine_classes(flex_display, flex.wrap, gap(1), m.b(4)),
+        id="process-status"
+    )
+
+def render_cpu_processes_table(top_cpu):
+    """Render the CPU processes table."""
+    return Div(
+        Table(
+            Thead(
+                Tr(
+                    Th("PID", cls=combine_classes(font_size.xs, w(16))),
+                    Th("Name", cls=str(font_size.xs)),
+                    Th("CPU %", cls=combine_classes(font_size.xs, w(20))),
+                    Th("Memory", cls=combine_classes(font_size.xs, w(24))),
+                    Th("User", cls=str(font_size.xs))
+                )
+            ),
+            Tbody(
+                *[Tr(
+                    Td(str(proc['pid']), cls=str(font_size.xs)),
+                    Td(
+                        proc['name'],
+                        cls=combine_classes(font_size.xs, font_weight.medium)
+                    ),
+                    Td(
+                        Label(
+                            f"{proc['cpu_percent']:.1f}%",
+                            cls=combine_classes(
+                                badge,
+                                badge_colors.error if proc['cpu_percent'] > 50 else
+                                badge_colors.warning if proc['cpu_percent'] > 25 else
+                                badge_colors.info,
+                                badge_sizes.sm
+                            )
+                        )
+                    ),
+                    Td(f"{proc['memory_mb']:.0f} MB", cls=str(font_size.xs)),
+                    Td(proc['username'], cls=str(font_size.xs))
+                ) for proc in top_cpu]
+            ),
+            cls=combine_classes(table, table_modifiers.zebra, table_sizes.xs, w.full)
+        ),
+        id="cpu-processes-table"
+    )
+
+def render_memory_processes_table(top_memory):
+    """Render the memory processes table."""
+    return Div(
+        Table(
+            Thead(
+                Tr(
+                    Th("PID", cls=combine_classes(font_size.xs, w(16))),
+                    Th("Name", cls=str(font_size.xs)),
+                    Th("Memory %", cls=combine_classes(font_size.xs, w(20))),
+                    Th("Memory", cls=combine_classes(font_size.xs, w(24))),
+                    Th("User", cls=str(font_size.xs))
+                )
+            ),
+            Tbody(
+                *[Tr(
+                    Td(str(proc['pid']), cls=str(font_size.xs)),
+                    Td(
+                        proc['name'],
+                        cls=combine_classes(font_size.xs, font_weight.medium)
+                    ),
+                    Td(
+                        Label(
+                            f"{proc['memory_percent']:.1f}%",
+                            cls=combine_classes(
+                                badge,
+                                badge_colors.error if proc['memory_percent'] > 50 else
+                                badge_colors.warning if proc['memory_percent'] > 25 else
+                                badge_colors.info,
+                                badge_sizes.sm
+                            )
+                        )
+                    ),
+                    Td(f"{proc['memory_mb']:.0f} MB", cls=str(font_size.xs)),
+                    Td(proc['username'], cls=str(font_size.xs))
+                ) for proc in top_memory]
+            ),
+            cls=combine_classes(table, table_modifiers.zebra, table_sizes.xs, w.full)
+        ),
+        id="memory-processes-table"
+    )
+
 def render_process_card(proc_info):
     """Render the process monitoring card."""
     return Div(
         # Header with process count
         Div(
             H3("Process Monitor", cls=combine_classes(card_title, text_dui.base_content)),
-            Span(
-                f"{proc_info['total']} processes",
-                cls=combine_classes(badge, badge_colors.primary, badge_sizes.lg)
-            ),
+            render_process_count(proc_info['total']),
             cls=combine_classes(flex_display, justify.between, items.center, m.b(4))
         ),
 
         # Process status summary
-        Div(
-            *[Span(
-                f"{status}: {count}",
-                cls=combine_classes(
-                    badge,
-                    badge_colors.info if status == 'running' else badge_colors.neutral,
-                    badge_sizes.sm,
-                    m.r(2)
-                )
-            ) for status, count in proc_info['status_counts'].items()],
-            cls=combine_classes(flex_display, flex.wrap, gap(1), m.b(4))
-        ),
+        render_process_status(proc_info['status_counts']),
 
         # Tabs for CPU vs Memory view
         Div(
@@ -402,82 +494,14 @@ def render_process_card(proc_info):
 
         # Top CPU processes table
         Div(
-            Table(
-                Thead(
-                    Tr(
-                        Th("PID", cls=combine_classes(font_size.xs, w(16))),
-                        Th("Name", cls=str(font_size.xs)),
-                        Th("CPU %", cls=combine_classes(font_size.xs, w(20))),
-                        Th("Memory", cls=combine_classes(font_size.xs, w(24))),
-                        Th("User", cls=str(font_size.xs))
-                    )
-                ),
-                Tbody(
-                    *[Tr(
-                        Td(str(proc['pid']), cls=str(font_size.xs)),
-                        Td(
-                            proc['name'],
-                            cls=combine_classes(font_size.xs, font_weight.medium)
-                        ),
-                        Td(
-                            Label(
-                                f"{proc['cpu_percent']:.1f}%",
-                                cls=combine_classes(
-                                    badge,
-                                    badge_colors.error if proc['cpu_percent'] > 50 else
-                                    badge_colors.warning if proc['cpu_percent'] > 25 else
-                                    badge_colors.info,
-                                    badge_sizes.sm
-                                )
-                            )
-                        ),
-                        Td(f"{proc['memory_mb']:.0f} MB", cls=str(font_size.xs)),
-                        Td(proc['username'], cls=str(font_size.xs))
-                    ) for proc in proc_info['top_cpu']],
-                ),
-                cls=combine_classes(table, table_modifiers.zebra, table_sizes.xs, w.full)
-            ),
+            render_cpu_processes_table(proc_info['top_cpu']),
             id="cpu-processes",
             style="display: block;"
         ),
 
         # Top Memory processes table
         Div(
-            Table(
-                Thead(
-                    Tr(
-                        Th("PID", cls=combine_classes(font_size.xs, w(16))),
-                        Th("Name", cls=str(font_size.xs)),
-                        Th("Memory %", cls=combine_classes(font_size.xs, w(20))),
-                        Th("Memory", cls=combine_classes(font_size.xs, w(24))),
-                        Th("User", cls=str(font_size.xs))
-                    )
-                ),
-                Tbody(
-                    *[Tr(
-                        Td(str(proc['pid']), cls=str(font_size.xs)),
-                        Td(
-                            proc['name'],
-                            cls=combine_classes(font_size.xs, font_weight.medium)
-                        ),
-                        Td(
-                            Label(
-                                f"{proc['memory_percent']:.1f}%",
-                                cls=combine_classes(
-                                    badge,
-                                    badge_colors.error if proc['memory_percent'] > 50 else
-                                    badge_colors.warning if proc['memory_percent'] > 25 else
-                                    badge_colors.info,
-                                    badge_sizes.sm
-                                )
-                            )
-                        ),
-                        Td(f"{proc['memory_mb']:.0f} MB", cls=str(font_size.xs)),
-                        Td(proc['username'], cls=str(font_size.xs))
-                    ) for proc in proc_info['top_memory']],
-                ),
-                cls=combine_classes(table, table_modifiers.zebra, table_sizes.xs, w.full)
-            ),
+            render_memory_processes_table(proc_info['top_memory']),
             id="memory-processes",
             style="display: none;"
         ),
@@ -946,7 +970,6 @@ def render_settings_modal():
                 Button(
                     "Apply",
                     cls=combine_classes(btn, btn_colors.primary),
-                    onclick="updateRefreshIntervals()",
                     hx_post="/update_intervals",
                     hx_vals="js:{cpu: document.getElementById('cpu-interval').value, memory: document.getElementById('memory-interval').value, disk: document.getElementById('disk-interval').value, network: document.getElementById('network-interval').value, process: document.getElementById('process-interval').value, gpu: document.getElementById('gpu-interval').value, temperature: document.getElementById('temperature-interval').value}",
                     hx_swap="none"
@@ -1172,11 +1195,29 @@ async def stream_updates():
                 # Check and update Process if interval has passed
                 if current_time - LAST_UPDATE_TIMES['process'] >= REFRESH_INTERVALS['process']:
                     proc_info = get_process_info()
-                    updates.append(oob_swap(
-                        render_process_card(proc_info),
-                        target_id="process-card-body",
-                        swap_type="outerHTML"
-                    ))
+                    # Use fine-grained updates for process card
+                    updates.extend([
+                        oob_swap(
+                            render_process_count(proc_info['total']),
+                            target_id="process-count",
+                            swap_type="outerHTML"
+                        ),
+                        oob_swap(
+                            render_process_status(proc_info['status_counts']),
+                            target_id="process-status",
+                            swap_type="outerHTML"
+                        ),
+                        oob_swap(
+                            render_cpu_processes_table(proc_info['top_cpu']),
+                            target_id="cpu-processes-table",
+                            swap_type="outerHTML"
+                        ),
+                        oob_swap(
+                            render_memory_processes_table(proc_info['top_memory']),
+                            target_id="memory-processes-table",
+                            swap_type="outerHTML"
+                        )
+                    ])
                     LAST_UPDATE_TIMES['process'] = current_time
 
                 # Check and update GPU if interval has passed and available
