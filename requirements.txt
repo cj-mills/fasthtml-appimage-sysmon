@@ -4,3 +4,4 @@ cjm-fasthtml-daisyui
 cjm_fasthtml_sse
 psutil
 nvitop
+plotly
