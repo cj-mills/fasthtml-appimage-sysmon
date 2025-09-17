@@ -25,7 +25,7 @@ def render_stat_card(title_text, value_text, desc_text=None, value_color=None):
         value_classes.append(value_color)
 
     return Div(
-        Div(title_text, cls=combine_classes(stat_title, text_dui.base_content.opacity(70))),
+        Div(title_text, cls=combine_classes(stat_title, text_dui.base_content)),
         Div(value_text, cls=combine_classes(*value_classes)),
         Div(desc_text, cls=str(stat_desc)) if desc_text else None,
         cls=str(stat)
@@ -39,7 +39,7 @@ def render_progress_bar(value, max_value=100, label=None):
     return Div(
         Div(
             Span(label or f"{value:.1f}%", cls=combine_classes(font_size.xs, text_dui.base_content)),
-            Span(f"{value:.1f}%", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))),
+            Span(f"{value:.1f}%", cls=combine_classes(font_size.xs, text_dui.base_content)),
             cls=combine_classes(justify.between, m.b(1), "flex")
         ) if label else None,
         Progress(

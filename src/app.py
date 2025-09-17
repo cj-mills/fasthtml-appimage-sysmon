@@ -162,9 +162,9 @@ def render_cpu_card(cpu_info):
                 Span(f"Current: {cpu_info['frequency_current']:.0f} MHz",
                      cls=combine_classes(text_dui.primary, font_size.sm)),
                 Span(f"Min: {cpu_info['frequency_min']:.0f} MHz",
-                     cls=combine_classes(text_dui.base_content.opacity(60), font_size.xs)),
+                     cls=combine_classes(text_dui.base_content, font_size.xs)),
                 Span(f"Max: {cpu_info['frequency_max']:.0f} MHz",
-                     cls=combine_classes(text_dui.base_content.opacity(60), font_size.xs)),
+                     cls=combine_classes(text_dui.base_content, font_size.xs)),
                 cls=combine_classes(flex_display, justify.between, gap(2))
             ),
             cls=str(m.b(4))
@@ -207,7 +207,7 @@ def render_memory_card(mem_info):
             render_progress_bar(mem_info['percent'],
                               label=f"{format_bytes(mem_info['used'])} / {format_bytes(mem_info['total'])}"),
             P(f"Available: {format_bytes(mem_info['available'])}",
-              cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.t(1))),
+              cls=combine_classes(font_size.xs, text_dui.base_content, m.t(1))),
             cls=str(m.b(4))
         ),
 
@@ -236,13 +236,13 @@ def render_disk_card(disk_info):
                 Div(
                     P(disk['device'], cls=combine_classes(font_size.sm, font_weight.medium)),
                     P(f"{disk['mountpoint']} ({disk['fstype']})",
-                      cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))),
+                      cls=combine_classes(font_size.xs, text_dui.base_content)),
                     cls=str(m.b(2))
                 ),
                 render_progress_bar(disk['percent'],
                                   label=f"{format_bytes(disk['used'])} / {format_bytes(disk['total'])}"),
                 P(f"Free: {format_bytes(disk['free'])}",
-                  cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.t(1))),
+                  cls=combine_classes(font_size.xs, text_dui.base_content, m.t(1))),
                 cls=combine_classes(p(3), bg_dui.base_200, rounded.lg, m.b(3))
             ) for disk in disk_info[:5]],  # Limit to 5 disks for UI clarity
             cls=""
@@ -287,7 +287,7 @@ def render_network_card(net_info):
                 Div(
                     P(interface['name'], cls=combine_classes(font_size.sm, font_weight.medium)),
                     P(', '.join(interface['ip_addresses']) if interface['ip_addresses'] else 'No IP',
-                      cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))),
+                      cls=combine_classes(font_size.xs, text_dui.base_content)),
                     cls=str(m.b(2))
                 ),
 
@@ -296,7 +296,7 @@ def render_network_card(net_info):
                     # Upload speed
                     Label(
                         Label(
-                            Span("↑ Upload", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                            Span("↑ Upload", cls=combine_classes(font_size.xs, text_dui.base_content)),
                             Span(format_bandwidth(interface['bytes_sent_per_sec']),
                                  cls=combine_classes(font_size.xs, text_dui.info, font_weight.medium)),
                             cls=combine_classes(flex_display, justify.between)
@@ -312,7 +312,7 @@ def render_network_card(net_info):
                     # Download speed
                     Label(
                         Label(
-                            Span("↓ Download", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                            Span("↓ Download", cls=combine_classes(font_size.xs, text_dui.base_content)),
                             Span(format_bandwidth(interface['bytes_recv_per_sec']),
                                  cls=combine_classes(font_size.xs, text_dui.success, font_weight.medium)),
                             cls=combine_classes(flex_display, justify.between)
@@ -328,7 +328,7 @@ def render_network_card(net_info):
                     # Statistics
                     Label(
                         Span(f"Total: ↑{format_bytes(interface['bytes_sent'])} ↓{format_bytes(interface['bytes_recv'])}",
-                             cls=combine_classes(font_size.xs, text_dui.base_content.opacity(50))),
+                             cls=combine_classes(font_size.xs, text_dui.base_content)),
                         cls=str(m.t(1))
                     ),
                 ),
@@ -543,14 +543,14 @@ def render_gpu_card(gpu_info):
                 Div(
                     # GPU Utilization
                     Label(
-                        P("GPU Utilization", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        P("GPU Utilization", cls=combine_classes(font_size.xs, text_dui.base_content)),
                         render_progress_bar(details['utilization']),
                         cls=str(m.b(3))
                     ),
 
                     # GPU Memory
                     Label(
-                        P("Memory", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        P("Memory", cls=combine_classes(font_size.xs, text_dui.base_content)),
                         render_progress_bar(
                             (details['memory_used'] / details['memory_total']) * 100 if details['memory_total'] > 0 else 0,
                             label=f"{details['memory_used']} MB / {details['memory_total']} MB"
@@ -560,7 +560,7 @@ def render_gpu_card(gpu_info):
 
                     # Temperature (if available)
                     Label(
-                        P("Temperature", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        P("Temperature", cls=combine_classes(font_size.xs, text_dui.base_content)),
                         Label(
                             Span(
                                 f"{details.get('temperature', 'N/A')}°C" if details.get('temperature') else "N/A",
@@ -576,7 +576,7 @@ def render_gpu_card(gpu_info):
 
                     # Power Usage (if available)
                     Label(
-                        P("Power", cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                        P("Power", cls=combine_classes(font_size.xs, text_dui.base_content)),
                         Label(
                             Span(
                                 f"{details.get('power_usage', 0):.1f}W / {details.get('power_limit', 0):.1f}W"
@@ -598,24 +598,24 @@ def render_gpu_card(gpu_info):
                         # Fan Speed
                         Span(
                             f"Fan: {details.get('fan_speed', 'N/A')}%" if details.get('fan_speed') is not None else "",
-                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))
+                            cls=combine_classes(font_size.xs, text_dui.base_content)
                         ) if details.get('fan_speed') is not None else None,
 
                         # Encoder/Decoder utilization
                         Span(
                             f"Enc: {details.get('encoder_utilization', 0)}%",
-                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.l(3))
+                            cls=combine_classes(font_size.xs, text_dui.base_content, m.l(3))
                         ) if details.get('encoder_utilization') is not None else None,
 
                         Span(
                             f"Dec: {details.get('decoder_utilization', 0)}%",
-                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.l(3))
+                            cls=combine_classes(font_size.xs, text_dui.base_content, m.l(3))
                         ) if details.get('decoder_utilization') is not None else None,
 
                         # Process count
                         Span(
                             f"Processes: {details.get('compute_processes', 0)}",
-                            cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60), m.l(3))
+                            cls=combine_classes(font_size.xs, text_dui.base_content, m.l(3))
                         ) if details.get('compute_processes') is not None else None,
 
                         cls=combine_classes(flex_display, items.center)
@@ -640,16 +640,16 @@ def render_gpu_card(gpu_info):
                 Table(
                     Thead(
                         Tr(
-                            Th("PID", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
-                            Th("Process", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
-                            Th("GPU Memory", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
-                            Th("GPU Usage", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
-                            Th("Device", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content.opacity(70))),
+                            Th("PID", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content)),
+                            Th("Process", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content)),
+                            Th("GPU Memory", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content)),
+                            Th("GPU Usage", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content)),
+                            Th("Device", cls=combine_classes(font_size.xs, font_weight.medium, text_dui.base_content)),
                         )
                     ),
                     Tbody(
                         *[Tr(
-                            Td(str(proc['pid']), cls=combine_classes(font_size.xs, text_dui.base_content.opacity(80))),
+                            Td(str(proc['pid']), cls=combine_classes(font_size.xs, text_dui.base_content)),
                             Td(
                                 proc['name'][:40] + "..." if len(proc['name']) > 40 else proc['name'],
                                 cls=combine_classes(font_size.xs, font_weight.medium)
@@ -674,7 +674,7 @@ def render_gpu_card(gpu_info):
                             ),
                             Td(
                                 f"GPU {proc['device_id']}",
-                                cls=combine_classes(font_size.xs, text_dui.base_content.opacity(60))
+                                cls=combine_classes(font_size.xs, text_dui.base_content)
                             ),
                         ) for proc in sorted(gpu_info.get('processes', []), key=lambda x: x['gpu_memory_mb'], reverse=True)[:10]],  # Show top 10
                         cls=""
@@ -683,7 +683,7 @@ def render_gpu_card(gpu_info):
                 ),
                 cls=combine_classes("overflow-x-auto", bg_dui.base_200, rounded.lg, p(2))
             ) if gpu_info.get('processes') else Div(
-                P("No active GPU processes", cls=combine_classes(font_size.sm, text_dui.base_content.opacity(50), text_align.center, p(4))),
+                P("No active GPU processes", cls=combine_classes(font_size.sm, text_dui.base_content, text_align.center, p(4))),
                 cls=combine_classes(bg_dui.base_200, rounded.lg)
             ),
             cls=""
@@ -743,7 +743,7 @@ def render_temperature_card(temp_info):
                 Div(
                     *[Div(
                         Label(
-                            Span(sensor['label'], cls=combine_classes(font_size.xs, text_dui.base_content.opacity(70))),
+                            Span(sensor['label'], cls=combine_classes(font_size.xs, text_dui.base_content)),
                             Label(
                                 Span(
                                     f"{sensor['current']:.1f}°C",
@@ -756,14 +756,6 @@ def render_temperature_card(temp_info):
                                         )
                                     )
                                 ),
-                                Span(
-                                    f"H: {sensor['high']:.0f}°C" if sensor['high'] else "",
-                                    cls=combine_classes(font_size.xs, text_dui.base_content.opacity(50), m.l(2))
-                                ) if sensor['high'] else None,
-                                Span(
-                                    f"C: {sensor['critical']:.0f}°C" if sensor['critical'] else "",
-                                    cls=combine_classes(font_size.xs, text_dui.error.opacity(50), m.l(2))
-                                ) if sensor['critical'] else None,
                                 cls=combine_classes(flex_display, items.center)
                             ),
                             cls=combine_classes(flex_display, justify.between, items.center)
@@ -819,7 +811,7 @@ def render_settings_modal():
             ),
             H3("Refresh Interval Settings", cls=combine_classes(font_size.lg, font_weight.bold, m.b(4))),
             P("Adjust the refresh intervals for each component (in seconds)",
-              cls=combine_classes(text_dui.base_content.opacity(70), font_size.sm, m.b(6))),
+              cls=combine_classes(text_dui.base_content, font_size.sm, m.b(6))),
 
             # Settings form
             Div(
@@ -1044,7 +1036,7 @@ def get():
             Div(
                 H2("System Overview", cls=combine_classes(font_size.xl, font_weight.semibold, text_dui.base_content, m.b(6))),
                 P(f"Monitoring {static_info['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                  cls=combine_classes(text_dui.base_content.opacity(60), font_size.sm)),
+                  cls=combine_classes(text_dui.base_content, font_size.sm)),
                 id="timestamp",
                 cls=str(m.b(6))
             ),
@@ -1112,7 +1104,7 @@ def get():
             # Footer
             Div(
                 P(f"Last updated: {datetime.now().strftime('%H:%M:%S')}",
-                  cls=combine_classes(text_dui.base_content.opacity(50), font_size.xs, text_align.center)),
+                  cls=combine_classes(text_dui.base_content, font_size.xs, text_align.center)),
                 cls=str(m.t(8))
             ),
 
@@ -1245,7 +1237,7 @@ async def stream_updates():
                 if updates:  # Only add timestamp if there are other updates
                     updates.append(oob_swap(
                         P(f"Monitoring {get_static_system_info()['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                          cls=combine_classes(text_dui.base_content.opacity(60), font_size.sm)),
+                          cls=combine_classes(text_dui.base_content, font_size.sm)),
                         target_id="timestamp",
                         swap_type="innerHTML"
                     ))
