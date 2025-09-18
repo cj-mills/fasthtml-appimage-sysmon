@@ -54,10 +54,10 @@ from cjm_fasthtml_daisyui.core.testing import create_theme_selector
 from cjm_fasthtml_tailwind.utilities.spacing import p, m, space
 from cjm_fasthtml_tailwind.utilities.flexbox_and_grid import flex_display, gap, grid_cols, items, justify, grid_display, flex
 from cjm_fasthtml_tailwind.utilities.sizing import w, h, max_w, min_h, min_w
-from cjm_fasthtml_tailwind.utilities.typography import font_size, font_weight, text_align, font_family, break_all, leading
+from cjm_fasthtml_tailwind.utilities.typography import font_size, font_weight, text_align, font_family, break_all, leading, break_all
 from cjm_fasthtml_tailwind.utilities.borders import rounded, border, border_color
 from cjm_fasthtml_tailwind.utilities.effects import shadow
-from cjm_fasthtml_tailwind.utilities.layout import position, right, top
+from cjm_fasthtml_tailwind.utilities.layout import position, right, top, display_tw
 from cjm_fasthtml_tailwind.core.base import combine_classes
 
 from utils import (
@@ -142,8 +142,8 @@ def get():
                         Span("Live", cls=combine_classes(
                             text_dui.success,
                             font_size.sm,
-                            "hidden",          # Hide text on mobile
-                            "sm:inline"        # Show on small screens and up
+                            display_tw.hidden,          # Hide text on mobile
+                            display_tw.inline.sm        # Show on small screens and up
                         )),
                         id="connection-status",
                         cls=combine_classes(flex_display, items.center)
@@ -152,8 +152,8 @@ def get():
                     Button(
                         Span("⚙", cls=""),
                         Span(" Settings", cls=combine_classes(
-                            "hidden",          # Hide text on mobile
-                            "sm:inline"        # Show on small screens and up
+                            display_tw.hidden,          # Hide text on mobile
+                            display_tw.inline.sm        # Show on small screens and up
                         )),
                         cls=combine_classes(btn, btn_sizes.sm, btn_styles.ghost),
                         onclick="settings_modal.showModal()"
@@ -205,7 +205,7 @@ def get():
                       text_dui.base_content,
                       font_size.xs,            # Extra small on mobile
                       font_size.sm.sm,         # Small on small screens+
-                      "break-all"              # Allow line breaks for long hostnames
+                      break_all              # Allow line breaks for long hostnames
                   )),
                 id="timestamp",
                 cls=combine_classes(

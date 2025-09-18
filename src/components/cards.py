@@ -650,22 +650,6 @@ def render_temperature_card(temp_info):
                             ),
                             cls=combine_classes(flex_display, justify.between, items.center)
                         ),
-
-                        # Temperature bar visualization
-                        Label(
-                            Label(
-                                cls=combine_classes(
-                                    h(2),
-                                    rounded.full,
-                                    bg_dui.base_300,
-                                    "relative",
-                                    overflow.hidden
-                                ),
-                                style=f"background: linear-gradient(to right, {self._get_temp_gradient(sensor['current'], sensor['high'] or 85, sensor['critical'] or 95)})"
-                            ) if False else None,  # Disabled gradient for now, using color text instead
-                            cls=str(m.t(1))
-                        ) if False else None,
-
                         cls=combine_classes(p(2), bg_dui.base_200, rounded.md, m.b(2))
                     ) for sensor in sensors],
                     cls=""
