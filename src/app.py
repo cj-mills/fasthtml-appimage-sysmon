@@ -323,123 +323,172 @@ async def update_intervals(cpu: int, memory: int, disk: int, network: int, proce
 
     return ""  # Empty response for HTMX
 
-@rt('/stream_updates')
-async def stream_updates():
-    """SSE endpoint for streaming system updates."""
-    async def update_stream():
+# Background task for generating system updates
+async def generate_system_updates():
+    """Background task that generates system updates and broadcasts them to all clients."""
+    while True:
         try:
-            while True:
-                current_time = time.time()
-                updates = []
+            current_time = time.time()
+            updates = []
 
-                # Check and update CPU if interval has passed
-                if current_time - config.LAST_UPDATE_TIMES['cpu'] >= config.REFRESH_INTERVALS['cpu']:
-                    cpu_info = get_cpu_info()
+            # Check and update CPU if interval has passed
+            if current_time - config.LAST_UPDATE_TIMES['cpu'] >= config.REFRESH_INTERVALS['cpu']:
+                cpu_info = get_cpu_info()
+                updates.append(oob_swap(
+                    render_cpu_card(cpu_info),
+                    target_id="cpu-card-body",
+                    swap_type="outerHTML"
+                ))
+                config.LAST_UPDATE_TIMES['cpu'] = current_time
+
+            # Check and update Memory if interval has passed
+            if current_time - config.LAST_UPDATE_TIMES['memory'] >= config.REFRESH_INTERVALS['memory']:
+                mem_info = get_memory_info()
+                updates.append(oob_swap(
+                    render_memory_card(mem_info),
+                    target_id="memory-card-body",
+                    swap_type="outerHTML"
+                ))
+                config.LAST_UPDATE_TIMES['memory'] = current_time
+
+            # Check and update Disk if interval has passed
+            if current_time - config.LAST_UPDATE_TIMES['disk'] >= config.REFRESH_INTERVALS['disk']:
+                disk_info = get_disk_info()
+                updates.append(oob_swap(
+                    render_disk_card(disk_info),
+                    target_id="disk-card-body",
+                    swap_type="outerHTML"
+                ))
+                config.LAST_UPDATE_TIMES['disk'] = current_time
+
+            # Check and update Network if interval has passed
+            if current_time - config.LAST_UPDATE_TIMES['network'] >= config.REFRESH_INTERVALS['network']:
+                net_info = get_network_info()
+                updates.append(oob_swap(
+                    render_network_card(net_info),
+                    target_id="network-card-body",
+                    swap_type="outerHTML"
+                ))
+                config.LAST_UPDATE_TIMES['network'] = current_time
+
+            # Check and update Process if interval has passed
+            if current_time - config.LAST_UPDATE_TIMES['process'] >= config.REFRESH_INTERVALS['process']:
+                proc_info = get_process_info()
+                # Use fine-grained updates for process card
+                updates.extend([
+                    oob_swap(
+                        render_process_count(proc_info['total']),
+                        target_id="process-count",
+                        swap_type="outerHTML"
+                    ),
+                    oob_swap(
+                        render_process_status(proc_info['status_counts']),
+                        target_id="process-status",
+                        swap_type="outerHTML"
+                    ),
+                    oob_swap(
+                        render_cpu_processes_table(proc_info['top_cpu']),
+                        target_id="cpu-processes-table",
+                        swap_type="outerHTML"
+                    ),
+                    oob_swap(
+                        render_memory_processes_table(proc_info['top_memory']),
+                        target_id="memory-processes-table",
+                        swap_type="outerHTML"
+                    )
+                ])
+                config.LAST_UPDATE_TIMES['process'] = current_time
+
+            # Check and update GPU if interval has passed and available
+            if current_time - config.LAST_UPDATE_TIMES['gpu'] >= config.REFRESH_INTERVALS['gpu']:
+                gpu_info = check_gpu()
+                if gpu_info['available']:
                     updates.append(oob_swap(
-                        render_cpu_card(cpu_info),
-                        target_id="cpu-card-body",
+                        render_gpu_card(gpu_info),
+                        target_id="gpu-card-body",
                         swap_type="outerHTML"
                     ))
-                    config.LAST_UPDATE_TIMES['cpu'] = current_time
+                config.LAST_UPDATE_TIMES['gpu'] = current_time
 
-                # Check and update Memory if interval has passed
-                if current_time - config.LAST_UPDATE_TIMES['memory'] >= config.REFRESH_INTERVALS['memory']:
-                    mem_info = get_memory_info()
-                    updates.append(oob_swap(
-                        render_memory_card(mem_info),
-                        target_id="memory-card-body",
-                        swap_type="outerHTML"
-                    ))
-                    config.LAST_UPDATE_TIMES['memory'] = current_time
+            # Check and update Temperature if interval has passed
+            if current_time - config.LAST_UPDATE_TIMES['temperature'] >= config.REFRESH_INTERVALS['temperature']:
+                temp_info = get_temperature_info()
+                updates.append(oob_swap(
+                    render_temperature_card(temp_info),
+                    target_id="temperature-card-body",
+                    swap_type="outerHTML"
+                ))
+                config.LAST_UPDATE_TIMES['temperature'] = current_time
 
-                # Check and update Disk if interval has passed
-                if current_time - config.LAST_UPDATE_TIMES['disk'] >= config.REFRESH_INTERVALS['disk']:
-                    disk_info = get_disk_info()
-                    updates.append(oob_swap(
-                        render_disk_card(disk_info),
-                        target_id="disk-card-body",
-                        swap_type="outerHTML"
-                    ))
-                    config.LAST_UPDATE_TIMES['disk'] = current_time
+            # Always update timestamp
+            if updates:  # Only add timestamp if there are other updates
+                updates.append(oob_swap(
+                    P(f"Monitoring {get_static_system_info()['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                      cls=combine_classes(text_dui.base_content, font_size.sm)),
+                    target_id="timestamp",
+                    swap_type="innerHTML"
+                ))
 
-                # Check and update Network if interval has passed
-                if current_time - config.LAST_UPDATE_TIMES['network'] >= config.REFRESH_INTERVALS['network']:
-                    net_info = get_network_info()
-                    updates.append(oob_swap(
-                        render_network_card(net_info),
-                        target_id="network-card-body",
-                        swap_type="outerHTML"
-                    ))
-                    config.LAST_UPDATE_TIMES['network'] = current_time
+            # Broadcast updates to all connected clients if there are any
+            if updates:
+                await sse_manager.broadcast("system_update", {"updates": updates})
 
-                # Check and update Process if interval has passed
-                if current_time - config.LAST_UPDATE_TIMES['process'] >= config.REFRESH_INTERVALS['process']:
-                    proc_info = get_process_info()
-                    # Use fine-grained updates for process card
-                    updates.extend([
-                        oob_swap(
-                            render_process_count(proc_info['total']),
-                            target_id="process-count",
-                            swap_type="outerHTML"
-                        ),
-                        oob_swap(
-                            render_process_status(proc_info['status_counts']),
-                            target_id="process-status",
-                            swap_type="outerHTML"
-                        ),
-                        oob_swap(
-                            render_cpu_processes_table(proc_info['top_cpu']),
-                            target_id="cpu-processes-table",
-                            swap_type="outerHTML"
-                        ),
-                        oob_swap(
-                            render_memory_processes_table(proc_info['top_memory']),
-                            target_id="memory-processes-table",
-                            swap_type="outerHTML"
-                        )
-                    ])
-                    config.LAST_UPDATE_TIMES['process'] = current_time
-
-                # Check and update GPU if interval has passed and available
-                if current_time - config.LAST_UPDATE_TIMES['gpu'] >= config.REFRESH_INTERVALS['gpu']:
-                    gpu_info = check_gpu()
-                    if gpu_info['available']:
-                        updates.append(oob_swap(
-                            render_gpu_card(gpu_info),
-                            target_id="gpu-card-body",
-                            swap_type="outerHTML"
-                        ))
-                    config.LAST_UPDATE_TIMES['gpu'] = current_time
-
-                # Check and update Temperature if interval has passed
-                if current_time - config.LAST_UPDATE_TIMES['temperature'] >= config.REFRESH_INTERVALS['temperature']:
-                    temp_info = get_temperature_info()
-                    updates.append(oob_swap(
-                        render_temperature_card(temp_info),
-                        target_id="temperature-card-body",
-                        swap_type="outerHTML"
-                    ))
-                    config.LAST_UPDATE_TIMES['temperature'] = current_time
-
-                # Always update timestamp
-                if updates:  # Only add timestamp if there are other updates
-                    updates.append(oob_swap(
-                        P(f"Monitoring {get_static_system_info()['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                          cls=combine_classes(text_dui.base_content, font_size.sm)),
-                        target_id="timestamp",
-                        swap_type="innerHTML"
-                    ))
-
-                # Send updates only if there are any
-                if updates:
-                    yield sse_message(Div(*updates))
-
-                # Wait before next check - use minimum interval for responsiveness
-                min_interval = min(config.REFRESH_INTERVALS.values())
-                await asyncio.sleep(min(1, min_interval))  # At least 1 second
+            # Wait before next check - use minimum interval for responsiveness
+            min_interval = min(config.REFRESH_INTERVALS.values())
+            await asyncio.sleep(min(1, min_interval))  # At least 1 second
 
         except Exception as e:
-            print(f"Error in update stream: {e}")
+            print(f"Error generating updates: {e}")
+            await asyncio.sleep(1)  # Wait before retrying
+
+# Start the background task when the module loads
+import asyncio
+update_task = None
+
+def start_update_task():
+    """Start the background update task."""
+    global update_task
+    if update_task is None or update_task.done():
+        update_task = asyncio.create_task(generate_system_updates())
+
+@rt('/stream_updates')
+async def stream_updates():
+    """SSE endpoint for streaming system updates to connected clients."""
+    async def update_stream():
+        # Register this connection with SSEBroadcastManager
+        queue = await sse_manager.register_connection()
+
+        try:
+            # Send initial connection confirmation
+            yield f": Connected to system updates (active connections: {sse_manager.connection_count})\n\n"
+
+            # Start the background task if not already running
+            start_update_task()
+
+            # Send updates and heartbeats
+            while True:
+                try:
+                    # Wait for message with timeout for heartbeat
+                    message = await asyncio.wait_for(queue.get(), timeout=30.0)
+
+                    # Extract updates from the message
+                    if message.get("type") == "system_update":
+                        updates = message.get("data", {}).get("updates", [])
+                        if updates:
+                            # Send as SSE message
+                            yield sse_message(Div(*updates))
+
+                except asyncio.TimeoutError:
+                    # Send heartbeat to keep connection alive
+                    yield f": heartbeat {datetime.now().isoformat()}\n\n"
+
+                except Exception as e:
+                    print(f"Error in update stream: {e}")
+                    break
+
+        finally:
+            # Unregister this connection
+            await sse_manager.unregister_connection(queue)
 
     return EventStream(update_stream())
 
