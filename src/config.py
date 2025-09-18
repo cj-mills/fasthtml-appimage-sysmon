@@ -20,7 +20,8 @@ else:
     WORK_DIR = Path.cwd()
 
 # Maximum CPU cores to display in per-core view
-MAX_CPU_CORES = 32
+# Note: No longer used as of responsive grid implementation
+# MAX_CPU_CORES = 32
 
 # Maximum processes to show in top lists
 MAX_PROCESSES = 5

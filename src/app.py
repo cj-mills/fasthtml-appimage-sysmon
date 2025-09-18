@@ -121,32 +121,60 @@ def get():
     temp_info = get_temperature_info()
 
     return Div(
-        # Navbar with improved styling
+        # Navbar with improved styling and mobile responsiveness
         Div(
             Div(
                 Div(
                     H1("System Monitor Dashboard",
-                       cls=combine_classes(font_size._2xl, font_weight.bold, text_dui.base_content)),
+                       cls=combine_classes(
+                           font_size.lg,          # Smaller on mobile
+                           font_size.xl.sm,       # Medium on small screens
+                           font_size._2xl.md,     # Large on medium+ screens
+                           font_weight.bold,
+                           text_dui.base_content
+                       )),
                     cls=str(navbar_start)
                 ),
                 Div(
-                    # Connection status indicator
+                    # Connection status indicator - hide text on mobile
                     Label(
-                        Span(cls=combine_classes(status, status_colors.success, status_sizes.sm, m.r(2))),
-                        Span("Live", cls=combine_classes(text_dui.success, font_size.sm)),
+                        Span(cls=combine_classes(status, status_colors.success, status_sizes.sm, m.r(1), m.r(2).sm)),
+                        Span("Live", cls=combine_classes(
+                            text_dui.success,
+                            font_size.sm,
+                            "hidden",          # Hide text on mobile
+                            "sm:inline"        # Show on small screens and up
+                        )),
                         id="connection-status",
                         cls=combine_classes(flex_display, items.center)
                     ),
-                    # Settings button
+                    # Settings button - icon only on mobile
                     Button(
-                        "⚙ Settings",
+                        Span("⚙", cls=""),
+                        Span(" Settings", cls=combine_classes(
+                            "hidden",          # Hide text on mobile
+                            "sm:inline"        # Show on small screens and up
+                        )),
                         cls=combine_classes(btn, btn_sizes.sm, btn_styles.ghost),
                         onclick="settings_modal.showModal()"
                     ),
                     create_theme_selector(),
-                    cls=combine_classes(flex_display, justify.end, items.center, gap(4), navbar_end)
+                    cls=combine_classes(
+                        flex_display,
+                        justify.end,
+                        items.center,
+                        gap(2),               # Smaller gap on mobile
+                        gap(4).sm,            # Normal gap on small+
+                        navbar_end
+                    )
                 ),
-                cls=combine_classes(navbar, bg_dui.base_100, shadow.sm, p(4))
+                cls=combine_classes(
+                    navbar,
+                    bg_dui.base_100,
+                    shadow.sm,
+                    p(2),                     # Smaller padding on mobile
+                    p(4).sm                   # Normal padding on small+
+                )
             )
         ),
 
@@ -163,11 +191,27 @@ def get():
         Div(
             # System Overview Header
             Div(
-                H2("System Overview", cls=combine_classes(font_size.xl, font_weight.semibold, text_dui.base_content, m.b(6))),
+                H2("System Overview", cls=combine_classes(
+                    font_size.lg,              # Smaller on mobile
+                    font_size.xl.sm,           # Medium on small
+                    font_size._2xl.md,         # Large on medium+
+                    font_weight.semibold,
+                    text_dui.base_content,
+                    m.b(4),                    # Less margin on mobile
+                    m.b(6).sm                  # Normal margin on small+
+                )),
                 P(f"Monitoring {static_info['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                  cls=combine_classes(text_dui.base_content, font_size.sm)),
+                  cls=combine_classes(
+                      text_dui.base_content,
+                      font_size.xs,            # Extra small on mobile
+                      font_size.sm.sm,         # Small on small screens+
+                      "break-all"              # Allow line breaks for long hostnames
+                  )),
                 id="timestamp",
-                cls=str(m.b(6))
+                cls=combine_classes(
+                    m.b(4),                    # Less margin on mobile
+                    m.b(6).sm                  # Normal margin on small+
+                )
             ),
 
             # Grid layout for cards
@@ -227,7 +271,17 @@ def get():
                     id="temperature-card"
                 ),
 
-                cls=combine_classes(grid_display, grid_cols(1).md, grid_cols(2).lg, grid_cols(3).xl, gap(6))
+                cls=combine_classes(
+                    grid_display,
+                    grid_cols(1),          # Mobile: 1 column (default)
+                    grid_cols(1).sm,       # Small: still 1 column (for better readability)
+                    grid_cols(2).md,       # Medium: 2 columns
+                    grid_cols(2).lg,       # Large: 2 columns (cards have good width)
+                    grid_cols(3).xl,       # Extra large: 3 columns
+                    grid_cols(4)._2xl,     # 2XL: 4 columns for ultra-wide screens
+                    gap(4),                # Reduced gap for mobile
+                    gap(6).md              # Larger gap for bigger screens
+                )
             ),
 
             # Footer
@@ -237,7 +291,13 @@ def get():
                 cls=str(m.t(8))
             ),
 
-            cls=combine_classes(p(6), max_w.screen_2xl, m.auto)
+            cls=combine_classes(
+                p(4),                    # Smaller padding on mobile
+                p(6).sm,                 # Normal padding on small+
+                p(8).lg,                 # Larger padding on desktop
+                max_w.screen_2xl,
+                m.auto
+            )
         ),
 
         # Settings Modal

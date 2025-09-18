@@ -16,22 +16,22 @@ from cjm_fasthtml_daisyui.components.layout.divider import divider
 from cjm_fasthtml_daisyui.utilities.semantic_colors import bg_dui, text_dui, border_dui
 
 # Tailwind imports
+from cjm_fasthtml_tailwind.utilities.layout import overflow
 from cjm_fasthtml_tailwind.utilities.spacing import p, m, space
-from cjm_fasthtml_tailwind.utilities.flexbox_and_grid import flex_display, gap, items, justify
-from cjm_fasthtml_tailwind.utilities.sizing import w, h
+from cjm_fasthtml_tailwind.utilities.flexbox_and_grid import flex_display, gap, items, justify, grid_display, grid_cols, flex_direction
+from cjm_fasthtml_tailwind.utilities.sizing import w, h, min_w
 from cjm_fasthtml_tailwind.utilities.typography import font_size, font_weight, text_align, font_family, break_all, leading
 from cjm_fasthtml_tailwind.utilities.typography import font_size, font_weight
 from cjm_fasthtml_tailwind.utilities.borders import rounded
 from cjm_fasthtml_tailwind.core.base import combine_classes
 
 from utils import (
-    format_bytes, 
-    format_bandwidth, 
-    format_uptime, 
-    get_temperature_color, 
-    get_temperature_badge_color, 
+    format_bytes,
+    format_bandwidth,
+    format_uptime,
+    get_temperature_color,
+    get_temperature_badge_color,
 )
-import config
 from monitors import (
     get_static_system_info, 
 )
@@ -44,6 +44,72 @@ from components import (
     render_memory_processes_table
 )
 
+
+def get_cpu_text_color(percent):
+    """Get semantic color based on CPU usage percentage."""
+    if percent < 20:
+        return text_dui.base_content.opacity(60)  # Idle - subtle
+    elif percent < 50:
+        return text_dui.success  # Low usage - green
+    elif percent < 80:
+        return text_dui.warning  # Medium usage - yellow/orange
+    else:
+        return text_dui.error    # High usage - red
+
+def render_cpu_cores_grid(cpu_percents):
+    """Render CPU cores as a responsive grid with color-coded percentages.
+
+    Grid columns are optimized for container width at each breakpoint:
+    - Mobile (1 col main): 4 cores wide
+    - Small (1 col main): 6 cores wide
+    - Medium (2 col main): 4 cores wide (card is ~50% screen)
+    - Large (2 col main): 5 cores wide (card is ~50% screen)
+    - XL (3 col main): 5 cores wide (card is ~33% screen)
+    - 2XL (4 col main): 4-6 cores wide (card is ~25% screen)
+    """
+    return Div(
+        *[Div(
+            # Core number (small, subtle)
+            Span(f"C{i}", cls=combine_classes(
+                font_size.xs,
+                text_dui.base_content.opacity(40),  # Very subtle
+                font_weight.normal
+            )),
+            # Percentage value (prominent, colored)
+            Div(f"{percent:.0f}%", cls=combine_classes(
+                font_size.xs,           # Extra small on mobile
+                font_size.sm.sm,        # Small on small screens+
+                font_weight.semibold,
+                get_cpu_text_color(percent)
+            )),
+            cls=combine_classes(
+                flex_display,
+                flex_direction.col,
+                items.center,
+                justify.center,
+                p(1),                   # Smaller padding on mobile
+                p(2).sm,                # Normal padding on small+
+                bg_dui.base_200,
+                rounded.md,
+                min_w(10),              # Smaller minimum width on mobile
+                min_w(12).sm,           # Normal minimum width on small+
+                h(10),                  # Smaller height on mobile
+                h(12).sm                # Normal height on small+
+            )
+        ) for i, percent in enumerate(cpu_percents)],
+        cls=combine_classes(
+            grid_display,
+            # Responsive grid columns - adjusted for container context
+            grid_cols(4),       # Mobile (1 col main): 4 cores wide
+            grid_cols(6).sm,    # Small (1 col main): 6 cores wide
+            grid_cols(4).md,    # Medium (2 col main): 4 cores per row (good for ~50% width)
+            grid_cols(5).lg,    # Large (2 col main): 5 cores per row (good for ~50% width)
+            grid_cols(5).xl,    # XL (3 col main): 5 cores per row (good for ~33% width)
+            grid_cols(6)._2xl,  # 2XL (4 col main): 6 cores per row (good for ~25% width)
+            gap(1),             # Small gap between items
+            w.full
+        )
+    )
 
 def render_os_info_card():
     """Render the OS information card."""
@@ -59,7 +125,7 @@ def render_os_info_card():
             render_stat_card("Hostname", info['hostname'], f"Python {info['python_version']}"),
             render_stat_card("Boot Time", info['boot_time'], f"Uptime: {format_uptime(info['boot_time'])}"),
             render_stat_card("CPU Cores", f"{info['cpu_count']} Physical", f"{info['cpu_count_logical']} Logical"),
-            cls=combine_classes(stats, stats_direction.vertical.lg, bg_dui.base_200, rounded.lg, p(4))
+            cls=combine_classes(stats, stats_direction.vertical, bg_dui.base_200, rounded.lg, p(4), overflow.x.auto, w.full)
         ),
         cls=str(card_body)
     )
@@ -101,16 +167,12 @@ def render_cpu_card(cpu_info):
             cls=str(m.b(4))
         ),
 
-        # Per-core usage (if not too many cores)
+        # Per-core usage - now handles any number of cores efficiently
         Div(
             P("Per Core Usage", cls=combine_classes(font_size.sm, font_weight.medium, m.b(2))),
-            Div(
-                *[render_progress_bar(percent, label=f"Core {i}")
-                  for i, percent in enumerate(cpu_info['percent_per_core'][:config.MAX_CPU_CORES])],
-                cls=str(space.y(2))
-            ),
-            cls=str(m.t(2))
-        ) if len(cpu_info['percent_per_core']) <= config.MAX_CPU_CORES else None,
+            render_cpu_cores_grid(cpu_info['percent_per_core']),
+            cls=str(m.t(4))
+        ) if cpu_info['percent_per_core'] else None,
 
         cls=str(card_body),
         id="cpu-card-body"
@@ -277,7 +339,7 @@ def render_network_card(net_info):
                 render_stat_card("Established", str(connections['established'])),
                 render_stat_card("Listening", str(connections['listen'])),
                 render_stat_card("Time Wait", str(connections['time_wait'])),
-                cls=combine_classes(stats, bg_dui.base_200, rounded.lg, p(2), font_size.xs)
+                cls=combine_classes(stats, bg_dui.base_200, rounded.lg, p(2), font_size.xs, overflow.x.auto, w.full)
             ),
             cls=str(m.t(3))
         ),
@@ -322,14 +384,16 @@ def render_process_card(proc_info):
         Div(
             render_cpu_processes_table(proc_info['top_cpu']),
             id="cpu-processes",
-            style="display: block;"
+            style="display: block;",
+            cls=combine_classes(overflow.x.auto)
         ),
 
         # Top Memory processes table
         Div(
             render_memory_processes_table(proc_info['top_memory']),
             id="memory-processes",
-            style="display: none;"
+            style="display: none;",
+            cls=combine_classes(overflow.x.auto)
         ),
 
         cls=str(card_body),
@@ -507,7 +571,7 @@ def render_gpu_card(gpu_info):
                     ),
                     cls=combine_classes(table, table_sizes.xs, w.full)
                 ),
-                cls=combine_classes("overflow-x-auto", bg_dui.base_200, rounded.lg, p(2))
+                cls=combine_classes(overflow.x.auto, bg_dui.base_200, rounded.lg, p(2))
             ) if gpu_info.get('processes') else Div(
                 P("No active GPU processes", cls=combine_classes(font_size.sm, text_dui.base_content, text_align.center, p(4))),
                 cls=combine_classes(bg_dui.base_200, rounded.lg)
@@ -595,7 +659,7 @@ def render_temperature_card(temp_info):
                                     rounded.full,
                                     bg_dui.base_300,
                                     "relative",
-                                    "overflow-hidden"
+                                    overflow.hidden
                                 ),
                                 style=f"background: linear-gradient(to right, {self._get_temp_gradient(sensor['current'], sensor['high'] or 85, sensor['critical'] or 95)})"
                             ) if False else None,  # Disabled gradient for now, using color text instead
