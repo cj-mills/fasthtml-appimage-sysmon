@@ -20,6 +20,7 @@ import json
 import threading
 import time
 import psutil
+from concurrent.futures import TimeoutError
 
 # SSE imports
 from cjm_fasthtml_sse.core import SSEBroadcastManager
@@ -91,9 +92,66 @@ from components import (
     render_settings_modal
 )
 
+from uvicorn.main import Server
 
-# Initialize SSE Broadcast Manager
+original_handler = Server.handle_exit
+
+# Initialize SSE Broadcast Manager first (moved up)
 sse_manager = SSEBroadcastManager(**config.SSE_CONFIG)
+
+class SSEShutdownHandler:
+    should_exit = False
+    active_connections = set()
+    shutdown_event = asyncio.Event()
+
+    @staticmethod
+    def handle_exit(*args, **kwargs):
+        SSEShutdownHandler.should_exit = True
+
+        # Signal shutdown to all waiting tasks
+        SSEShutdownHandler.shutdown_event.set()
+
+        # Send shutdown message directly to all SSE connection queues
+        try:
+            print(f"\nBroadcasting shutdown to {sse_manager.connection_count} connections...")
+
+            # Create the shutdown message
+            shutdown_message = {
+                "type": "shutdown",
+                "timestamp": datetime.now().isoformat(),
+                "data": {"message": "Server shutting down"}
+            }
+
+            # Send directly to all connection queues (synchronously)
+            for queue in list(sse_manager.connections):
+                try:
+                    # Use put_nowait to avoid blocking
+                    queue.put_nowait(shutdown_message)
+                except asyncio.QueueFull:
+                    print("Queue full, couldn't send shutdown message")
+                except Exception as e:
+                    print(f"Error sending shutdown to queue: {e}")
+
+            print(f"Sent shutdown message to {len(sse_manager.connections)} connections")
+
+            # Give connections a moment to process the messages
+            time.sleep(1.0)
+
+        except Exception as e:
+            print(f"Error during shutdown broadcast: {e}")
+
+        # Now close all active SSE connections
+        print(f"Closing {len(SSEShutdownHandler.active_connections)} active SSE connections...")
+        for connection in list(SSEShutdownHandler.active_connections):
+            try:
+                connection.cancel()
+            except Exception as e:
+                print(f"Error closing connection: {e}")
+        SSEShutdownHandler.active_connections.clear()
+
+        original_handler(*args, **kwargs)
+
+Server.handle_exit = SSEShutdownHandler.handle_exit
 
 # Initialize HTMX SSE Connector
 htmx_sse_connector = HTMXSSEConnector()
@@ -168,6 +226,7 @@ def render_sse_connection_monitor():
         let reconnectAttempts = 0;
         let maxReconnectAttempts = 10;
         let reconnectDelay = 1000;
+        let isShuttingDown = false;
         let statusElement = document.getElementById('connection-status');
         let sseElement = document.getElementById('sse-connection');
 
@@ -196,6 +255,14 @@ def render_sse_connection_monitor():
         document.body.addEventListener('htmx:sseError', function(evt) {{
             if (evt.detail.elt === sseElement) {{
                 console.log('SSE connection error');
+
+                // Don't try to reconnect if shutting down
+                if (isShuttingDown) {{
+                    console.log('Server is shutting down, not attempting reconnection');
+                    updateStatus('disconnected');
+                    return;
+                }}
+
                 updateStatus('error');
 
                 // Attempt to reconnect
@@ -219,9 +286,34 @@ def render_sse_connection_monitor():
             }}
         }});
 
+        // Listen for custom close events from the server
+        document.body.addEventListener('htmx:sseMessage', function(evt) {{
+            if (evt.detail.elt === sseElement && evt.detail.event === 'close') {{
+                console.log('Server requested connection close:', evt.detail.data);
+                isShuttingDown = true;
+                updateStatus('disconnected');
+                // Stop trying to reconnect if server is shutting down
+                reconnectAttempts = maxReconnectAttempts;
+                // Close the EventSource
+                if (sseElement._sseEventSource) {{
+                    sseElement._sseEventSource.close();
+                    delete sseElement._sseEventSource;
+                }}
+            }}
+        }});
+
+        // Also listen for when the SSE element is removed via OOB swap
+        document.body.addEventListener('htmx:oobAfterSwap', function(evt) {{
+            if (evt.detail.target && evt.detail.target.id === 'sse-connection') {{
+                console.log('SSE element removed via OOB swap - server shutting down');
+                isShuttingDown = true;
+                updateStatus('disconnected');
+            }}
+        }});
+
         // Handle page visibility changes
         document.addEventListener('visibilitychange', function() {{
-            if (!document.hidden && sseElement) {{
+            if (!document.hidden && sseElement && !isShuttingDown) {{
                 // Check connection state when page becomes visible
                 let evtSource = sseElement._sseEventSource;
                 if (!evtSource || evtSource.readyState === EventSource.CLOSED) {{
@@ -457,7 +549,7 @@ async def update_intervals(cpu: int, memory: int, disk: int, network: int, proce
 # Background task for generating system updates
 async def generate_system_updates():
     """Background task that generates system updates and broadcasts them to all clients."""
-    while True:
+    while not SSEShutdownHandler.should_exit:
         try:
             current_time = time.time()
             updates = []
@@ -586,8 +678,14 @@ def start_update_task():
 async def stream_updates():
     """SSE endpoint for streaming system updates to connected clients."""
     async def update_stream():
+        # Create a task for this connection stream
+        current_task = asyncio.current_task()
+
         # Register this connection with SSEBroadcastManager
         queue = await sse_manager.register_connection()
+
+        # Track this connection in SSEShutdownHandler
+        SSEShutdownHandler.active_connections.add(current_task)
 
         try:
             # Send initial connection confirmation
@@ -597,10 +695,25 @@ async def stream_updates():
             start_update_task()
 
             # Send updates and heartbeats
-            while True:
+            while not SSEShutdownHandler.should_exit:
                 try:
                     # Wait for message with timeout for heartbeat
                     message = await asyncio.wait_for(queue.get(), timeout=30.0)
+
+                    # Check for shutdown message
+                    if message.get("type") == "shutdown":
+                        print(f"Received shutdown message, closing SSE connection")
+                        # Send an OOB swap to remove the SSE element entirely
+                        # This stops HTMX from trying to reconnect
+                        close_element = Div(
+                            id="sse-connection",
+                            hx_swap_oob="true",
+                            style="display: none;"
+                        )
+                        yield sse_message(close_element)
+                        # Also send close event
+                        yield f"event: close\ndata: {json.dumps({'message': 'Server shutting down'})}\n\n"
+                        break
 
                     # Extract updates from the message
                     if message.get("type") == "system_update":
@@ -613,13 +726,26 @@ async def stream_updates():
                     # Send heartbeat to keep connection alive
                     yield f": heartbeat {datetime.now().isoformat()}\n\n"
 
+                except asyncio.CancelledError:
+                    # Connection is being closed
+                    print(f"SSE connection cancelled")
+                    yield f"event: close\ndata: {json.dumps({'message': 'Connection cancelled'})}\n\n"
+                    break
+
                 except Exception as e:
                     print(f"Error in update stream: {e}")
                     break
 
+            # If we exit due to app shutdown, notify client
+            if SSEShutdownHandler.should_exit:
+                yield f"event: close\ndata: {json.dumps({'message': 'Server shutting down'})}\n\n"
+
         finally:
             # Unregister this connection
             await sse_manager.unregister_connection(queue)
+
+            # Remove from active connections
+            SSEShutdownHandler.active_connections.discard(current_task)
 
     return EventStream(update_stream())
 
