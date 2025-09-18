@@ -108,6 +108,137 @@ app, rt = fast_app(
 # Insert HTMX SSE extension
 insert_htmx_sse_ext(app.hdrs)
 
+# Helper functions for connection status indicators
+def create_connection_status_indicators():
+    """Create status indicator elements for different connection states"""
+    return {
+        'active': Span(
+            Span(cls=combine_classes(status, status_colors.success, status_sizes.sm, m.r(1), m.r(2).sm)),
+            Span("Live", cls=combine_classes(
+                text_dui.success,
+                font_size.sm,
+                display_tw.hidden,          # Hide text on mobile
+                display_tw.inline.sm        # Show on small screens and up
+            )),
+        ),
+        'disconnected': Span(
+            Span(cls=combine_classes(status, status_colors.warning, status_sizes.sm, m.r(1), m.r(2).sm)),
+            Span("Disconnected", cls=combine_classes(
+                text_dui.warning,
+                font_size.sm,
+                display_tw.hidden,
+                display_tw.inline.sm
+            )),
+        ),
+        'error': Span(
+            Span(cls=combine_classes(status, status_colors.error, status_sizes.sm, m.r(1), m.r(2).sm)),
+            Span("Error", cls=combine_classes(
+                text_dui.error,
+                font_size.sm,
+                display_tw.hidden,
+                display_tw.inline.sm
+            )),
+        ),
+        'reconnecting': Span(
+            Span(cls=combine_classes(status, status_colors.info, status_sizes.sm, m.r(1), m.r(2).sm)),
+            Span("Reconnecting...", cls=combine_classes(
+                text_dui.info,
+                font_size.sm,
+                display_tw.hidden,
+                display_tw.inline.sm
+            )),
+        )
+    }
+
+def render_sse_connection_monitor():
+    """Create a Script element that monitors SSE connection status"""
+    indicators = create_connection_status_indicators()
+
+    # Convert indicators to HTML strings for JavaScript
+    status_html = {
+        'active': str(indicators['active']),
+        'disconnected': str(indicators['disconnected']),
+        'error': str(indicators['error']),
+        'reconnecting': str(indicators['reconnecting'])
+    }
+
+    monitor_script = f"""
+    // SSE Connection Monitor
+    (function() {{
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 10;
+        let reconnectDelay = 1000;
+        let statusElement = document.getElementById('connection-status');
+        let sseElement = document.getElementById('sse-connection');
+
+        const statusIndicators = {{
+            active: `{status_html['active']}`,
+            disconnected: `{status_html['disconnected']}`,
+            error: `{status_html['error']}`,
+            reconnecting: `{status_html['reconnecting']}`
+        }};
+
+        function updateStatus(state) {{
+            if (statusElement && statusIndicators[state]) {{
+                statusElement.innerHTML = statusIndicators[state];
+            }}
+        }}
+
+        // Monitor HTMX SSE events
+        document.body.addEventListener('htmx:sseOpen', function(evt) {{
+            if (evt.detail.elt === sseElement) {{
+                console.log('SSE connection opened');
+                updateStatus('active');
+                reconnectAttempts = 0;
+            }}
+        }});
+
+        document.body.addEventListener('htmx:sseError', function(evt) {{
+            if (evt.detail.elt === sseElement) {{
+                console.log('SSE connection error');
+                updateStatus('error');
+
+                // Attempt to reconnect
+                if (reconnectAttempts < maxReconnectAttempts) {{
+                    setTimeout(function() {{
+                        reconnectAttempts++;
+                        console.log('Attempting to reconnect... (attempt ' + reconnectAttempts + ')');
+                        updateStatus('reconnecting');
+                        htmx.trigger(sseElement, 'htmx:sseReconnect');
+                    }}, reconnectDelay * Math.min(reconnectAttempts + 1, 5));
+                }} else {{
+                    updateStatus('disconnected');
+                }}
+            }}
+        }});
+
+        document.body.addEventListener('htmx:sseClose', function(evt) {{
+            if (evt.detail.elt === sseElement) {{
+                console.log('SSE connection closed');
+                updateStatus('disconnected');
+            }}
+        }});
+
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', function() {{
+            if (!document.hidden && sseElement) {{
+                // Check connection state when page becomes visible
+                let evtSource = sseElement._sseEventSource;
+                if (!evtSource || evtSource.readyState === EventSource.CLOSED) {{
+                    console.log('Page became visible, reconnecting SSE...');
+                    updateStatus('reconnecting');
+                    htmx.trigger(sseElement, 'htmx:sseReconnect');
+                }}
+            }}
+        }});
+
+        // Initial status check
+        updateStatus('reconnecting');
+    }})();
+    """
+
+    return Script(monitor_script)
+
 @rt('/')
 def get():
     # Get initial system information
@@ -119,6 +250,9 @@ def get():
     proc_info = get_process_info()
     gpu_info = check_gpu()
     temp_info = get_temperature_info()
+
+    # Get initial connection status indicator
+    indicators = create_connection_status_indicators()
 
     return Div(
         # Navbar with improved styling and mobile responsiveness
@@ -136,15 +270,9 @@ def get():
                     cls=str(navbar_start)
                 ),
                 Div(
-                    # Connection status indicator - hide text on mobile
+                    # Connection status indicator - dynamically updated
                     Label(
-                        Span(cls=combine_classes(status, status_colors.success, status_sizes.sm, m.r(1), m.r(2).sm)),
-                        Span("Live", cls=combine_classes(
-                            text_dui.success,
-                            font_size.sm,
-                            display_tw.hidden,          # Hide text on mobile
-                            display_tw.inline.sm        # Show on small screens and up
-                        )),
+                        indicators['reconnecting'],  # Start with reconnecting status
                         id="connection-status",
                         cls=combine_classes(flex_display, items.center)
                     ),
@@ -302,6 +430,9 @@ def get():
 
         # Settings Modal
         render_settings_modal(),
+
+        # SSE Connection Monitor Script
+        render_sse_connection_monitor(),
 
         cls=combine_classes(min_h.screen, bg_dui.base_200)
     )
