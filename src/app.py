@@ -156,12 +156,17 @@ Server.handle_exit = SSEShutdownHandler.handle_exit
 # Initialize HTMX SSE Connector
 htmx_sse_connector = HTMXSSEConnector()
 
+static_path = Path(__file__).absolute().parent
+
 # Create the FastHTML app with DaisyUI headers
 app, rt = fast_app(
     pico=False,
     hdrs=[*get_daisyui_headers()],
-    title="System Monitor Dashboard"
+    title="System Monitor Dashboard",
+    static_path=str(static_path)
 )
+
+app.hdrs.append(Link(rel='icon', type='image/png', href='/static/layout-dashboard.png'))  # for PNG
 
 # Insert HTMX SSE extension
 insert_htmx_sse_ext(app.hdrs)
