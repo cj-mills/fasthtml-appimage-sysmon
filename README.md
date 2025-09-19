@@ -13,44 +13,36 @@ A real-time system monitoring dashboard built with FastHTML and packaged as a po
   - Hostname and Python version
   - Boot time and uptime tracking
   - CPU core counts (physical and logical)
-
 - **CPU Monitoring**
   - Real-time overall CPU usage percentage
-  - Per-core usage visualization (up to 32 cores)
+  - Per-core usage visualization
   - CPU frequency monitoring (current/min/max)
   - Dynamic color-coded progress bars
-
 - **Memory Monitoring**
   - RAM usage with percentage and bytes
   - Available memory display
   - Swap memory usage tracking
   - Visual progress indicators
-
 - **Disk Usage**
   - Multiple disk/partition support
   - Device, mountpoint, and filesystem information
   - Usage percentages with progress bars
   - Free space indicators
-
 - **Network Monitoring**
   - Real-time bandwidth monitoring (upload/download speeds)
   - Network interface details with IP addresses
   - Packets sent/received statistics
   - Bandwidth calculation with accurate per-second rates
-
 - **Process Monitoring**
   - Total process count with status breakdown
-  - Top 5 CPU-consuming processes
-  - Top 5 memory-consuming processes
+  - Top CPU-consuming processes
+  - Top memory-consuming processes
   - Detailed process tables with PID and usage percentages
-
 - **GPU Monitoring**
   - NVIDIA GPU detection and monitoring (via nvitop)
   - GPU utilization percentage
   - GPU memory usage tracking
-  - Multi-GPU support
   - Temperature monitoring
-
 - **Temperature Sensors**
   - CPU temperature monitoring
   - GPU temperature (when available)
@@ -61,11 +53,10 @@ A real-time system monitoring dashboard built with FastHTML and packaged as a po
 
 - **Real-time Updates**: SSE-based streaming for live data
 - **Configurable Refresh Rates**: Independent update intervals for each component
-- **Theme Support**: Built-in light/dark theme switcher
+- **Theme Support**: Built-in theme switcher
 - **Responsive Design**: Adaptive grid layout for different screen sizes
-- **Visual Hierarchy**: Clear typography and spacing following Refactoring UI principles
 - **Status Indicators**: Color-coded alerts and progress bars
-- **Settings Modal**: Easy configuration of refresh intervals (1-60 seconds per component)
+- **Settings Modal**: Easy configuration of refresh intervals
 
 ### Technical Features
 
@@ -218,7 +209,7 @@ Shows detailed debug information.
 
 ### Settings Panel:
 
-- Adjustable refresh intervals for each component (1-60 seconds)
+- Adjustable refresh intervals for each component
 - Immediate application of settings
 - Persistent configuration during session
 
