@@ -62,6 +62,7 @@ from cjm_fasthtml_tailwind.utilities.layout import position, right, top, display
 from cjm_fasthtml_tailwind.core.base import combine_classes
 
 from cjm_fasthtml_sysmon.core.utils import open_browser
+from cjm_fasthtml_sysmon.core.html_ids import HtmlIds
 import config
 from cjm_fasthtml_sysmon.monitors.cpu import get_cpu_info
 from cjm_fasthtml_sysmon.monitors.system import get_static_system_info
@@ -225,8 +226,8 @@ def render_sse_connection_monitor():
         let maxReconnectAttempts = 10;
         let reconnectDelay = 1000;
         let isShuttingDown = false;
-        let statusElement = document.getElementById('connection-status');
-        let sseElement = document.getElementById('sse-connection');
+        let statusElement = document.getElementById('{HtmlIds.CONNECTION_STATUS}');
+        let sseElement = document.getElementById('{HtmlIds.SSE_CONNECTION}');
 
         const statusIndicators = {{
             active: `{status_html['active']}`,
@@ -302,7 +303,7 @@ def render_sse_connection_monitor():
 
         // Also listen for when the SSE element is removed via OOB swap
         document.body.addEventListener('htmx:oobAfterSwap', function(evt) {{
-            if (evt.detail.target && evt.detail.target.id === 'sse-connection') {{
+            if (evt.detail.target && evt.detail.target.id === '{HtmlIds.SSE_CONNECTION}') {{
                 console.log('SSE element removed via OOB swap - server shutting down');
                 isShuttingDown = true;
                 updateStatus('disconnected');
@@ -363,7 +364,7 @@ def get():
                     # Connection status indicator - dynamically updated
                     Label(
                         indicators['reconnecting'],  # Start with reconnecting status
-                        id="connection-status",
+                        id=HtmlIds.CONNECTION_STATUS,
                         cls=combine_classes(flex_display, items.center)
                     ),
                     # Settings button - icon only on mobile
@@ -398,7 +399,7 @@ def get():
 
         # SSE connection for real-time updates
         Div(
-            id="sse-connection",
+            id=HtmlIds.SSE_CONNECTION,
             hx_ext="sse",
             sse_connect="/stream_updates",
             sse_swap="message",
@@ -425,7 +426,7 @@ def get():
                       font_size.sm.sm,         # Small on small screens+
                       break_all              # Allow line breaks for long hostnames
                   )),
-                id="timestamp",
+                id=HtmlIds.TIMESTAMP,
                 cls=combine_classes(
                     m.b(4),                    # Less margin on mobile
                     m.b(6).sm                  # Normal margin on small+
@@ -444,49 +445,49 @@ def get():
                 Div(
                     render_cpu_card(cpu_info),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md),
-                    id="cpu-card"
+                    id=HtmlIds.CPU_CARD
                 ),
 
                 # Memory Usage Card
                 Div(
                     render_memory_card(mem_info),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md),
-                    id="memory-card"
+                    id=HtmlIds.MEMORY_CARD
                 ),
 
                 # Disk Usage Card
                 Div(
                     render_disk_card(disk_info),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md),
-                    id="disk-card"
+                    id=HtmlIds.DISK_CARD
                 ),
 
                 # Network Monitoring Card
                 Div(
                     render_network_card(net_info),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md),
-                    id="network-card"
+                    id=HtmlIds.NETWORK_CARD
                 ),
 
                 # Process Monitoring Card
                 Div(
                     render_process_card(proc_info),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md),
-                    id="process-card"
+                    id=HtmlIds.PROCESS_CARD
                 ),
 
                 # GPU Information Card
                 Div(
                     render_gpu_card(gpu_info),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md),
-                    id="gpu-card"
+                    id=HtmlIds.GPU_CARD
                 ),
 
                 # Temperature Sensors Card
                 Div(
                     render_temperature_card(temp_info),
                     cls=combine_classes(card, bg_dui.base_100, shadow.md),
-                    id="temperature-card"
+                    id=HtmlIds.TEMPERATURE_CARD
                 ),
 
                 cls=combine_classes(
@@ -557,7 +558,7 @@ async def generate_system_updates():
                 cpu_info = get_cpu_info()
                 updates.append(oob_swap(
                     render_cpu_card(cpu_info),
-                    target_id="cpu-card-body",
+                    target_id=HtmlIds.CPU_CARD_BODY,
                     swap_type="outerHTML"
                 ))
                 config.LAST_UPDATE_TIMES['cpu'] = current_time
@@ -567,7 +568,7 @@ async def generate_system_updates():
                 mem_info = get_memory_info()
                 updates.append(oob_swap(
                     render_memory_card(mem_info),
-                    target_id="memory-card-body",
+                    target_id=HtmlIds.MEMORY_CARD_BODY,
                     swap_type="outerHTML"
                 ))
                 config.LAST_UPDATE_TIMES['memory'] = current_time
@@ -577,7 +578,7 @@ async def generate_system_updates():
                 disk_info = get_disk_info()
                 updates.append(oob_swap(
                     render_disk_card(disk_info),
-                    target_id="disk-card-body",
+                    target_id=HtmlIds.DISK_CARD_BODY,
                     swap_type="outerHTML"
                 ))
                 config.LAST_UPDATE_TIMES['disk'] = current_time
@@ -587,7 +588,7 @@ async def generate_system_updates():
                 net_info = get_network_info()
                 updates.append(oob_swap(
                     render_network_card(net_info),
-                    target_id="network-card-body",
+                    target_id=HtmlIds.NETWORK_CARD_BODY,
                     swap_type="outerHTML"
                 ))
                 config.LAST_UPDATE_TIMES['network'] = current_time
@@ -599,22 +600,22 @@ async def generate_system_updates():
                 updates.extend([
                     oob_swap(
                         render_process_count(proc_info['total']),
-                        target_id="process-count",
+                        target_id=HtmlIds.PROCESS_COUNT,
                         swap_type="outerHTML"
                     ),
                     oob_swap(
                         render_process_status(proc_info['status_counts']),
-                        target_id="process-status",
+                        target_id=HtmlIds.PROCESS_STATUS,
                         swap_type="outerHTML"
                     ),
                     oob_swap(
                         render_cpu_processes_table(proc_info['top_cpu']),
-                        target_id="cpu-processes-table",
+                        target_id=HtmlIds.CPU_PROCESSES_TABLE,
                         swap_type="outerHTML"
                     ),
                     oob_swap(
                         render_memory_processes_table(proc_info['top_memory']),
-                        target_id="memory-processes-table",
+                        target_id=HtmlIds.MEMORY_PROCESSES_TABLE,
                         swap_type="outerHTML"
                     )
                 ])
@@ -626,7 +627,7 @@ async def generate_system_updates():
                 if gpu_info['available']:
                     updates.append(oob_swap(
                         render_gpu_card(gpu_info),
-                        target_id="gpu-card-body",
+                        target_id=HtmlIds.GPU_CARD_BODY,
                         swap_type="outerHTML"
                     ))
                 config.LAST_UPDATE_TIMES['gpu'] = current_time
@@ -636,7 +637,7 @@ async def generate_system_updates():
                 temp_info = get_temperature_info()
                 updates.append(oob_swap(
                     render_temperature_card(temp_info),
-                    target_id="temperature-card-body",
+                    target_id=HtmlIds.TEMPERATURE_CARD_BODY,
                     swap_type="outerHTML"
                 ))
                 config.LAST_UPDATE_TIMES['temperature'] = current_time
@@ -646,7 +647,7 @@ async def generate_system_updates():
                 updates.append(oob_swap(
                     P(f"Monitoring {get_static_system_info()['hostname']} • {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                       cls=combine_classes(text_dui.base_content, font_size.sm)),
-                    target_id="timestamp",
+                    target_id=HtmlIds.TIMESTAMP,
                     swap_type="innerHTML"
                 ))
 
@@ -704,7 +705,7 @@ async def stream_updates():
                         # Send an OOB swap to remove the SSE element entirely
                         # This stops HTMX from trying to reconnect
                         close_element = Div(
-                            id="sse-connection",
+                            id=HtmlIds.SSE_CONNECTION,
                             hx_swap_oob="true",
                             style="display: none;"
                         )
