@@ -330,8 +330,8 @@ def render_sse_connection_monitor():
 
     return Script(monitor_script)
 
-@rt('/')
-def get():
+@rt
+def index():
     # Get initial system information
     static_info = get_static_system_info()
     cpu_info = get_cpu_info()
@@ -401,7 +401,7 @@ def get():
         Div(
             id=HtmlIds.SSE_CONNECTION,
             hx_ext="sse",
-            sse_connect="/stream_updates",
+            sse_connect=stream_updates.to(),
             sse_swap="message",
             style="display: none;"
         ),
@@ -520,7 +520,7 @@ def get():
         ),
 
         # Settings Modal
-        render_settings_modal(config.REFRESH_INTERVALS),
+        render_settings_modal(config.REFRESH_INTERVALS, post_rt=update_intervals.to()),
 
         # SSE Connection Monitor Script
         render_sse_connection_monitor(),
@@ -528,7 +528,7 @@ def get():
         cls=combine_classes(min_h.screen, bg_dui.base_200)
     )
 
-@rt('/update_intervals', methods=['POST'])
+@rt
 async def update_intervals(cpu: int, memory: int, disk: int, network: int, process: int, gpu: int, temperature: int):
     """Update the refresh intervals for each component."""
     config.REFRESH_INTERVALS['cpu'] = int(cpu)
@@ -673,7 +673,7 @@ def start_update_task():
     if update_task is None or update_task.done():
         update_task = asyncio.create_task(generate_system_updates())
 
-@rt('/stream_updates')
+@rt
 async def stream_updates():
     """SSE endpoint for streaming system updates to connected clients."""
     async def update_stream():
