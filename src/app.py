@@ -61,24 +61,18 @@ from cjm_fasthtml_tailwind.utilities.effects import shadow
 from cjm_fasthtml_tailwind.utilities.layout import position, right, top, display_tw
 from cjm_fasthtml_tailwind.core.base import combine_classes
 
-from utils import (
-
-    open_browser
-)
+from cjm_fasthtml_sysmon.core.utils import open_browser
 import config
-from monitors import (
-    get_cpu_info, 
-    get_static_system_info, 
-    get_memory_info, 
-    get_disk_info, 
-    get_network_info,
-    get_process_info,
-    check_gpu,
-    get_temperature_info
-)
-from components import (
-    render_process_count,
-    render_process_status,
+from cjm_fasthtml_sysmon.monitors.cpu import get_cpu_info
+from cjm_fasthtml_sysmon.monitors.system import get_static_system_info
+from cjm_fasthtml_sysmon.monitors.memory import get_memory_info
+from cjm_fasthtml_sysmon.monitors.disk import get_disk_info
+from cjm_fasthtml_sysmon.monitors.network import get_network_info
+from cjm_fasthtml_sysmon.monitors.processes import get_process_info
+from cjm_fasthtml_sysmon.monitors.gpu import get_gpu_info
+from cjm_fasthtml_sysmon.monitors.sensors import get_temperature_info
+from cjm_fasthtml_sysmon.components.base import render_process_count, render_process_status
+from cjm_fasthtml_sysmon.components.cards import (
     render_os_info_card,
     render_cpu_card,
     render_memory_card,
@@ -86,11 +80,10 @@ from components import (
     render_network_card,
     render_process_card,
     render_gpu_card,
-    render_temperature_card,
-    render_cpu_processes_table,
-    render_memory_processes_table,
-    render_settings_modal
+    render_temperature_card
 )
+from cjm_fasthtml_sysmon.components.tables import render_cpu_processes_table, render_memory_processes_table
+from cjm_fasthtml_sysmon.components.modals import render_settings_modal
 
 from uvicorn.main import Server
 
@@ -345,7 +338,7 @@ def get():
     disk_info = get_disk_info()
     net_info = get_network_info()
     proc_info = get_process_info()
-    gpu_info = check_gpu()
+    gpu_info = get_gpu_info()
     temp_info = get_temperature_info()
 
     # Get initial connection status indicator
@@ -526,7 +519,7 @@ def get():
         ),
 
         # Settings Modal
-        render_settings_modal(),
+        render_settings_modal(config.REFRESH_INTERVALS),
 
         # SSE Connection Monitor Script
         render_sse_connection_monitor(),
@@ -629,7 +622,7 @@ async def generate_system_updates():
 
             # Check and update GPU if interval has passed and available
             if current_time - config.LAST_UPDATE_TIMES['gpu'] >= config.REFRESH_INTERVALS['gpu']:
-                gpu_info = check_gpu()
+                gpu_info = get_gpu_info()
                 if gpu_info['available']:
                     updates.append(oob_swap(
                         render_gpu_card(gpu_info),

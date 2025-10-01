@@ -5,7 +5,7 @@ Configuration and constants for the System Monitor Dashboard.
 import os
 import tempfile
 from pathlib import Path
-from utils import find_free_port
+from cjm_fasthtml_sysmon.core.utils import find_free_port
 
 # Port and host configuration
 PORT_ENV = os.environ.get('FASTHTML_PORT', '0')
