@@ -75,7 +75,6 @@ fasthtml-appimage-sysmon/
 ├── build-resources/          # Build resources (used during build)
 │   ├── AppRun               # Entry point script
 │   └── fasthtml-demo.desktop # Desktop entry file
-├── claude-docs/             # Documentation for Claude AI integration
 ├── src/                     # Application source code
 │   ├── app.py              # Main FastHTML application
 │   ├── config.py           # Configuration and constants
